@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+	<title>scuznet settings</title>
+	<style>
+		body {
+			font-family: monospace;
+			color: white;
+			background-color: #222;
+			font-size: larger;
+		}
+		
+		input {
+			font-family: inherit;
+		}
+		
+		input[type=number] {
+			width: 3em;
+		}
+		
+		#download_link {
+			display: none;
+		}
+		
+		fieldset {
+			display: inline-block;
+		}
+		
+		legend {
+			text-transform: uppercase;
+			font-weight: bold;
+			font-size: larger;
+		}
+		
+		.settings {
+			width: 600px;
+			display: grid;
+			grid-template-columns: 0.4fr 1fr;
+			grid-gap: 0.5em;
+			margin-bottom: 0.5em;
+		}
+		
+		.output {
+			margin-top: 0.5em;
+			padding: 1em;
+		}
+	</style>
+	<script>
+		// total settings byte count, including 0xAA at beginning
+		const byteCount = 10;
+		
+		function toHex(num) {
+			let hex = num.toString(16).toUpperCase();
+			if (num < 16)
+			{
+				hex = '0' + hex;
+			}
+			return hex;
+		}
+		
+		function scuznetSettings() {
+			// extract settings
+			let settings = [];
+			settings[0] = 0;
+			if (document.getElementById('parity').checked) {
+				settings[0] |= 1;
+			}
+			if (document.getElementById('debug').checked) {
+				settings[0] |= 2;
+			}
+			settings[1] = parseInt(document.getElementById('hdd_id').value, 10);
+			settings[2] = parseInt(document.getElementById('link_id').value, 10);
+			settings[3] = parseInt(document.getElementById('mac1').value, 16);
+			settings[4] = parseInt(document.getElementById('mac2').value, 16);
+			settings[5] = parseInt(document.getElementById('mac3').value, 16);
+			settings[6] = parseInt(document.getElementById('mac4').value, 16);
+			settings[7] = parseInt(document.getElementById('mac5').value, 16);
+			settings[8] = parseInt(document.getElementById('mac6').value, 16);
+
+			// construct checksum
+			let checksum = byteCount + 170; // byte count + 0xAA
+			for (i = 0; i < byteCount - 1; i++) {
+				checksum += settings[i];
+			}
+			checksum = (-checksum) & 0xFF;
+
+			// add prefix: ':XX000000AA', where XX is the byte count
+			let line = '%3A' + toHex(byteCount) + '000000AA';
+			// add data bytes and checksum
+			for (i = 0; i < byteCount - 1; i++) {
+				line += toHex(settings[i]);
+			}
+			line += toHex(checksum);
+			// add line return and end-of-file statement
+			line += '%0A%3A00000001FF';
+
+			// write to output block
+			let outhex = 'AA';
+			for (i = 0; i < byteCount - 1; i++) {
+				outhex += ' ' + toHex(settings[i]);
+			}
+			document.getElementById('output').value = outhex;
+
+			// supply to user
+			let elm = document.getElementById('download_link');
+			elm.setAttribute('href', 'data:,' + line);
+			elm.click();
+		}
+	</script>
+</head>
+
+<body>
+	<h1>Scuznet Settings Utility</h1>
+
+	<p><em>The following requires a modern HTML5 web browser.</em></p>
+
+	<p>This page helps configure a <b>scuznet</b> board. Fill out the form
+	below and press &quot;Download&quot; to generate a document that can be
+	flashed to the board's EEPROM.</p>
+
+	<form onsubmit="scuznetSettings(); return false">
+		<fieldset>
+			<legend>Scuznet Settings</legend>
+			<div class="settings">
+				<label for="parity">Transmit Parity:</label>
+				<input type="checkbox" id="parity" name="parity" checked />
+
+				<label for="debug">Debugging Output:</label>
+				<input type="checkbox" id="debug" name="debug" />
+
+				<label for="hdd_id">Hard Drive ID:</label>
+				<input type="number" id="hdd_id" name="hdd_id"
+						min="0" max="6" value="3" />
+
+				<label for="link_id">Ethernet ID:</label>
+				<input type="number" id="link_id" name="link_id"
+					min="0" max="6" value="4" />
+
+				<label for="mac">Ethernet MAC:</label>
+				<div id="mac">
+					<input type="text" id="mac1" name="mac1" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="02" />:
+					<input type="text" id="mac2" name="mac2" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="00" />:
+					<input type="text" id="mac3" name="mac3" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="00" />:
+					<input type="text" id="mac4" name="mac4" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="BE" />:
+					<input type="text" id="mac5" name="mac5" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="EE" />:
+					<input type="text" id="mac6" name="mac6" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="EF" />
+				</div>
+			</div>
+			<input type="submit" value="Download" />
+		</fieldset>
+	</form>
+
+	<form>
+		<fieldset class="output">
+			<label for="output">EEPROM Output:</label>
+			<input type="text" id="output" name="output" size="40" />
+		</fieldset>
+	</form>
+
+	<p>The resulting file can be written using
+	<b>avrdude -U eeprom:w:scuznet_settings.hex:i</b> or a similar command.</p>
+
+	<p><b>Debugging Output:</b> controls whether or not bytes appear on the
+	debug TX pin. Enabling this is only effective if <b>-DDEBUGGING</b> was
+	set during compilation. This setting decreases performance and should
+	generally be left off unless you have a need for it.</p>
+
+	<p><b>Transmit Parity:</b> if set, this drives /DBP when appropriate.
+	Required for certain hosts. Generally speaking, Macintosh computers of the
+	vintage scuznet is likely to be used with do not care about parity at all.
+	Enabling this option slightly decreases performance.</p>
+
+	<p><b>Hard Drive ID:</b> the SCSI ID of the emulated hard drive.</p>
+
+	<p><b>Ethernet ID:</b> the SCSI ID of the emulated Ethernet device.</p>
+
+	<p><b>Ethernet MAC:</b> the default MAC address of the emulated Ethernet
+	device.</p>
+
+	<p>Note that without any configuration input, the device will set itself
+	up as follows:</p>
+	
+	<ul>
+		<li>Debugging output will be disabled.</li>
+		<li>Transmit parity will be enabled.</li>
+		<li>The emulated hard drive will be set to ID 3.</li>
+		<li>The emulated Ethernet device will be set to ID 4.</li>
+		<li>The Ethernet MAC will default to the value set in config.h during
+		compilation.</li>
+	</ul>
+
+	<h2>Technical Details</h2>
+
+	<p>Configuration values are stored at the following decimal byte offsets
+	from the start of the EEPROM:</p>
+
+	<ul>
+		<li><b>0:</b> 0xAA to indicate that configuration information has been
+		set, with any other value indicating that the compiled-in defaults
+		should be used instead.</li>
+		<li><b>1:</b> Flags byte, where each bit, from least to most
+		significant is:
+			<ul>
+				<li><b>0:</b> transit parity enabled flag.</li>
+				<li><b>1:</b> debugging enabled flag.</li>
+			</ul>
+		</li>
+		<li><b>2:</b> Integer device ID for the emulated hard drive.</li>
+		<li><b>3:</b> Integer device ID for the emulated Ethernet
+		controller.</li>
+		<li><b>4-9:</b> Default MAC address, in MSB to LSB order.</li>
+		<li><b>10-63:</b> Reserved for future expansion.</li>
+	</ul>
+
+	<p>The MAC address logic will force-clear bit 0 (LSB) of the highest byte
+	to ensure that a multicast MAC is not accidently set on the device.</p>
+
+	<a id="download_link" href="#" download="scuznet_settings.hex" />
+</body>
+
+</html>

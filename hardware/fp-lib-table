@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name scuznet)(type KiCad)(uri "$(KIPRJMOD)/scuznet.pretty")(options "")(descr ""))
+)
