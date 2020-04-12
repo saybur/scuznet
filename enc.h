@@ -22,6 +22,8 @@
 
 #include <avr/io.h>
 
+#ifdef ENC_ENABLED
+
 /*
  * Defines the interface for communicating with the ENC28J60 on an ATXMEGA AU
  * series MCU. This implementation defines the low-level registers of the ENC
@@ -380,5 +382,7 @@ uint8_t enc_phy_scan(uint8_t);
 void enc_read_start(void);
 void enc_write_start(void);
 void enc_data_end(void);
+
+#endif /* ENC_ENABLED */
 
 #endif /* ENC_H */

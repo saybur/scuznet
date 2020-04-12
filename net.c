@@ -18,8 +18,11 @@
  */
 
 #include <util/delay.h>
+#include "config.h"
 #include "enc.h"
 #include "net.h"
+
+#ifdef ENC_ENABLED
 
 /*
  * See section 6.0 in the datasheet for details about the process this code
@@ -188,3 +191,5 @@ void net_transmit(uint8_t buffer, uint16_t length)
 	// set ECON1.TXRTS, which starts transmission
 	enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
 }
+
+#endif /* ENC_ENABLED */

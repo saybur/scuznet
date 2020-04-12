@@ -26,6 +26,8 @@
 #include "logic.h"
 #include "net.h"
 
+#ifdef ENC_ENABLED
+
 #define MAXIMUM_TRANSFER_LENGTH 1522
 
 // the response we always send to RECEIVE DIAGNOSTIC RESULTS
@@ -481,3 +483,5 @@ void link_main(void)
 
 	logic_done();
 }
+
+#endif /* ENC_ENABLED */

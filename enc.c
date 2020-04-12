@@ -21,6 +21,8 @@
 #include "config.h"
 #include "enc.h"
 
+#ifdef ENC_ENABLED
+
 #define ENC_ECON1_ARGUMENT 0x1F
 
 /*
@@ -425,3 +427,5 @@ void enc_data_end(void)
 	}
 	ENC_PORT.OUTSET = ENC_PIN_CS;
 }
+
+#endif /* ENC_ENABLED */

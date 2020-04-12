@@ -24,6 +24,8 @@
 #include "mem.h"
 #include "debug.h"
 
+#ifdef HDD_ENABLED
+
 // bitmasks for the R1 response
 #define MEM_R1_PARM_ERR         _BV(6)
 #define MEM_R1_ADDR_ERR         _BV(5)
@@ -623,3 +625,5 @@ uint32_t mem_size(uint8_t* csd)
 		return ((uint32_t) c_size + 1) << scalar;
 	}
 }
+
+#endif /* HDD_ENABLED */
