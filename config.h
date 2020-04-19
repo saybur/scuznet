@@ -21,8 +21,10 @@
 #define CONFIG_H
 
 #include <avr/io.h>
-#ifdef HW_V01
+#if defined(HW_V01)
 	#include "hw_v01.h"
+#elif defined(HW_DRV_V01)
+	#include "hw_drv_v01.h"
 #else
 	#error "You must define a hardware revision, like -DHW_V01"
 #endif
