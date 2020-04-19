@@ -20,8 +20,41 @@
 #ifndef INIT_H
 #define INIT_H
 
+/*
+ * Performs a few initial setup items:
+ * 
+ * 1) Disables the JTAG interface to free up the pins, and
+ * 2) Sets up the VPORTs.
+ * 
+ * This should only be called once, from main(), during initial MCU startup.
+ */
 void init_mcu(void);
+
+/*
+ * Sets up the internal oscillator, calibrated with the ~32kHz internal
+ * oscillator via the DFLL, and switches the system clock over to it.
+ * 
+ * This should only be called once, from main(), during initial MCU startup.
+ */
+void init_clock(void);
+
+/*
+ * Initializes the USART that sends debugging information and sets up the
+ * output status LED.
+ * 
+ * This should only be called once, from main(), during initial MCU startup.
+ */
+void init_debug(void);
+
+/*
+ * Sets up the PMIC for all interrupt levels and activates interrupts.
+ */
 void init_isr(void);
+
+/*
+ * Executes an MCU reset via the protected registers. This also disables
+ * interrupts as part of the operation.
+ */
 void mcu_reset(void);
 
 #endif /* INIT_H */

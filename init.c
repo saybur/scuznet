@@ -22,11 +22,35 @@
 #include "init.h"
 
 /*
- * Sets up the internal 32MHz oscillator, calibrated with the ~32kHz
- * internal oscillator via the DFLL, and switches the system clock over
- * to it.
+ * JTAG function blocks some pins we need, so it must be disabled.
  */
-static void init_clock(void)
+static void init_disable_jtag(void)
+{
+	__asm__ __volatile__(
+		"ldi r24, %0"		"\n\t"
+		"out %1, r24"		"\n\t"
+		"ldi r24, %2"		"\n\t"
+		"sts %3, r24"		"\n\t"
+		:
+		: "M" (CCP_IOREG_gc), "i" (&CCP),
+		  "M" (MCU_JTAGD_bm), "i" (&(MCU.MCUCR))
+		: "r24"
+		);
+}
+
+static void init_vports(void)
+{
+	PORTCFG.VPCTRLA = DEV_VPORT0_CFG | DEV_VPORT1_CFG;
+	PORTCFG.VPCTRLB = DEV_VPORT2_CFG | DEV_VPORT3_CFG;
+}
+
+void init_mcu(void)
+{
+	init_disable_jtag();
+	init_vports();
+}
+
+void init_clock(void)
 {
 	// enable the 32MHz and 32.768kHz internal oscillators and wait for
 	// them to become stable
@@ -53,30 +77,7 @@ static void init_clock(void)
 		);
 }
 
-/*
- * JTAG function blocks some pins we need, so it must be disabled.
- */
-static void init_disable_jtag(void)
-{
-	__asm__ __volatile__(
-		"ldi r24, %0"		"\n\t"
-		"out %1, r24"		"\n\t"
-		"ldi r24, %2"		"\n\t"
-		"sts %3, r24"		"\n\t"
-		:
-		: "M" (CCP_IOREG_gc), "i" (&CCP),
-		  "M" (MCU_JTAGD_bm), "i" (&(MCU.MCUCR))
-		: "r24"
-		);
-}
-
-static void init_vports(void)
-{
-	PORTCFG.VPCTRLA = DEV_VPORT0_CFG | DEV_VPORT1_CFG;
-	PORTCFG.VPCTRLB = DEV_VPORT2_CFG | DEV_VPORT3_CFG;
-}
-
-static void init_debug(void)
+void init_debug(void)
 {
 	DEBUG_PORT.OUTSET |= DEBUG_PIN_TX;
 	DEBUG_PORT.DIRSET |= DEBUG_PIN_TX;
@@ -84,14 +85,6 @@ static void init_debug(void)
 	DEBUG_USART.CTRLB |= USART_TXEN_bm;
 
 	LED_PORT.OUT &= ~LED_PIN;
-}
-
-void init_mcu(void)
-{
-	init_clock();
-	init_disable_jtag();
-	init_vports();
-	init_debug();
 }
 
 void init_isr(void)

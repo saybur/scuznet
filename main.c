@@ -67,6 +67,8 @@ int main(void)
 {
 	// configure basic peripherals and get ISRs going
 	init_mcu();
+	init_clock();
+	init_debug();
 	led_on();
 	#ifdef ENC_ENABLED
 		enc_init();
