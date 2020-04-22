@@ -353,7 +353,7 @@ static void hdd_write(uint8_t* cmd)
 			 */
 			while (! (MEM_USART.STATUS & USART_DREIF_bm));
 			MEM_USART.DATA = send_token;
-			phy_data_ask_stream(&MEM_USART, 512);
+			phy_data_ask_stream_block(&MEM_USART);
 
 			// wait for byte sending to stop so RX can be re-synced
 			while (! (MEM_USART.STATUS & USART_TXCIF_bm));

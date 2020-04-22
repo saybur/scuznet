@@ -241,6 +241,11 @@ void phy_data_ask_bulk(uint8_t*, uint16_t);
 void phy_data_ask_stream(USART_t*, uint16_t);
 
 /*
+ * As above, but for fixed lengths of 512 bytes.
+ */
+void phy_data_ask_stream_block(USART_t*);
+
+/*
  * ============================================================================
  *  
  *   BUS CONTROL OPERATIONS

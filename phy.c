@@ -609,6 +609,43 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 	}
 }
 
+void phy_data_ask_stream_block(USART_t* usart)
+{
+	uint8_t v;
+
+	if (! phy_is_active()) return;
+
+	uint8_t i = 255;
+	do
+	{
+		while (phy_is_ack_asserted());
+		req_assert();
+		while (! (phy_is_ack_asserted()));
+		v = phy_data_get();
+		req_release();
+		#ifdef PHY_PORT_DATA_IN_REVERSED
+			v = phy_reverse_table[v];
+		#endif
+		while (! (usart->STATUS & USART_DREIF_bm));
+		usart->DATA = v;
+	}
+	while (i--);
+	do
+	{
+		while (phy_is_ack_asserted());
+		req_assert();
+		while (! (phy_is_ack_asserted()));
+		v = phy_data_get();
+		req_release();
+		#ifdef PHY_PORT_DATA_IN_REVERSED
+			v = phy_reverse_table[v];
+		#endif
+		while (! (usart->STATUS & USART_DREIF_bm));
+		usart->DATA = v;
+	}
+	while (i--);
+}
+
 void phy_phase(uint8_t new_phase)
 {
 	if (! phy_is_active()) return;
