@@ -41,4 +41,5 @@ options.
 
 Except where otherwise noted, all files in this repository are available under
 the terms of the GNU General Public License, version 3, available in the
-COPYING document.
+LICENSE document. There is NO WARRANTY, not even for MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. For details, refer to the license.

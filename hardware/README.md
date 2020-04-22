@@ -21,4 +21,6 @@ the following known issues, and likely many other unknown ones:
 # License
 
 These files are available under the terms of the GNU General Public License,
-version 3, available in the LICENSE document in the parent directory.
+version 3, available in the LICENSE document in the parent directory. There is
+NO WARRANTY, not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+For details, refer to the license.
