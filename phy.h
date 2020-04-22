@@ -202,6 +202,11 @@ void phy_data_offer_bulk(uint8_t*, uint16_t);
 void phy_data_offer_stream(USART_t*, uint16_t);
 
 /*
+ * As above, but for fixed lengths of 512 bytes.
+ */
+void phy_data_offer_stream_block(USART_t*);
+
+/*
  * Specialized version of the above call, for use with the link device. This
  * version does two things differently:
  * 

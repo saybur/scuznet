@@ -228,7 +228,7 @@ static void hdd_read(uint8_t* cmd)
 				 * The byte required by the below call should already be in the
 				 * USART buffer per the contract with the data wait call.
 				 */
-				phy_data_offer_stream(&MEM_USART, 512);
+				phy_data_offer_stream_block(&MEM_USART);
 				for (uint8_t j = 0; j < 2; j++)
 				{
 					MEM_USART.DATA = 0xFF;

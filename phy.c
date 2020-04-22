@@ -468,6 +468,42 @@ void phy_data_offer_stream(USART_t* usart, uint16_t len)
 	}
 }
 
+void phy_data_offer_stream_block(USART_t* usart)
+{
+	uint8_t v;
+
+	if (! (PHY_REGISTER_PHASE & 0x01)) return;
+	if (! phy_is_active()) return;
+
+	uint8_t i = 255;
+	do
+	{
+		usart->DATA = 0xFF;
+		while (! (usart->STATUS & USART_RXCIF_bm));
+		v = usart->DATA;
+
+		while (phy_is_ack_asserted());
+		phy_data_set(v);
+		req_assert();
+		while (! phy_is_ack_asserted());
+		req_release();
+	}
+	while (i--);
+	do
+	{
+		usart->DATA = 0xFF;
+		while (! (usart->STATUS & USART_RXCIF_bm));
+		v = usart->DATA;
+
+		while (phy_is_ack_asserted());
+		phy_data_set(v);
+		req_assert();
+		while (! phy_is_ack_asserted());
+		req_release();
+	}
+	while (i--);
+}
+
 void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 {
 	uint8_t v;
