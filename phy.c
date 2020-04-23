@@ -473,33 +473,53 @@ void phy_data_offer_stream_block(USART_t* usart)
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
 
+	// verify a byte is actually waiting
+	while (! (usart->STATUS & USART_RXCIF_bm));
+
 	uint8_t i = 255;
-	do
+	for (uint8_t k = 0; k < 2; k++)
 	{
-		usart->DATA = 0xFF;
-		while (! (usart->STATUS & USART_RXCIF_bm));
-		v = usart->DATA;
+		if (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_PARITY)
+		{
+			do
+			{
+				usart->DATA = 0xFF;
+				// rest of loop takes long enough this is not needed
+				// while (! (usart->STATUS & USART_RXCIF_bm));
+				v = usart->DATA;
+				while (phy_is_ack_asserted());
 
-		while (phy_is_ack_asserted());
-		phy_data_set(v);
-		req_assert();
-		while (! phy_is_ack_asserted());
-		req_release();
-	}
-	while (i--);
-	do
-	{
-		usart->DATA = 0xFF;
-		while (! (usart->STATUS & USART_RXCIF_bm));
-		v = usart->DATA;
+				// see phy_data_set()
+				PHY_PORT_DATA_OUT.OUT = v;
+				dbp_release();
+				if (! (phy_bits_set[v] & 1))
+				{
+					dbp_assert();
+				}
 
-		while (phy_is_ack_asserted());
-		phy_data_set(v);
-		req_assert();
-		while (! phy_is_ack_asserted());
-		req_release();
+				req_assert();
+				while (! phy_is_ack_asserted());
+				req_release();
+			}
+			while (i--);
+		}
+		else
+		{
+			do
+			{
+				usart->DATA = 0xFF;
+				while (! (usart->STATUS & USART_RXCIF_bm));
+				v = usart->DATA;
+
+				while (phy_is_ack_asserted());
+				PHY_PORT_DATA_OUT.OUT = v;
+				req_assert();
+				while (! phy_is_ack_asserted());
+				req_release();
+			}
+			while (i--);
+		}
 	}
-	while (i--);
 }
 
 void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
