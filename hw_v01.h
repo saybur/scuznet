@@ -131,6 +131,8 @@
  *    trigger.
  * 4) The control input lines for /BSY and /SEL need to be on the same port,
  *    and that port can have no other pin interrupts associated with it.
+ * 5) Bitmasks must be set for all pins, and bit positions must be set for
+ *    receiving on /ACK and transmitting on /DBP, /REQ.
  */
 #define PHY_PORT_DATA_IN        PORTA
 #define PHY_PORT_DATA_OUT       PORTB
@@ -154,13 +156,16 @@
 #define PHY_PIN_R_SEL           PIN3_bm
 #define PHY_PIN_R_ATN           PIN5_bm
 #define PHY_PIN_R_ACK           PIN2_bm
+#define PHY_PIN_R_ACK_BP        PIN2_bp
 #define PHY_PIN_T_BSY           PIN0_bm
 #define PHY_PIN_T_SEL           PIN1_bm
 #define PHY_PIN_T_MSG           PIN5_bm
 #define PHY_PIN_T_CD            PIN3_bm
 #define PHY_PIN_T_IO            PIN4_bm
 #define PHY_PIN_T_REQ           PIN6_bm
+#define PHY_PIN_T_REQ_BP        PIN6_bp
 #define PHY_PIN_T_DBP           PIN0_bm
+#define PHY_PIN_T_DBP_BP        PIN0_bp
 #define PHY_PIN_DOE             PIN0_bm
 #define PHY_PIN_DCLK            PIN1_bm
 #define PHY_PIN_ACKEN           PIN7_bm

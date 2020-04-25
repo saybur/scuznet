@@ -468,58 +468,86 @@ void phy_data_offer_stream(USART_t* usart, uint16_t len)
 
 void phy_data_offer_stream_block(USART_t* usart)
 {
-	uint8_t v;
-
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
 
 	// verify a byte is actually waiting
 	while (! (usart->STATUS & USART_RXCIF_bm));
 
-	uint8_t i = 255;
-	for (uint8_t k = 0; k < 2; k++)
-	{
-		if (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_PARITY)
-		{
-			do
-			{
-				usart->DATA = 0xFF;
-				// rest of loop takes long enough this is not needed
-				// while (! (usart->STATUS & USART_RXCIF_bm));
-				v = usart->DATA;
-				while (phy_is_ack_asserted());
+	/*
+	 * A brute-force approach for speed in card transfers. This is in assembly
+	 * to achieve a few things:
+	 * 
+	 * 1) Ensure that the operation takes at least 16 cycles to allow us to
+	 *    skip the RXCIF check safely,
+	 * 2) Optimize the parity array, which is at a byte boundry, to allow 
+	 *    the low byte of the X pointer to be used both for data storage and as
+	 *    the direct lookup address into SRAM to get the parity data,
+	 * 3) Force usage of the Y pointer for the data output operation, and
+	 * 4) Give manual control over the degree of loop unrolling.
+	 * 
+	 * This is dependent on a few things being set elsewhere:
+	 * 
+	 * 1) The card USART must be operating at full speed, 16 CPU cycles/byte.
+	 * 2) The bits-set array must be aligned to a 256 byte boundary.
+	 * 
+	 * This feels more than a little hacky, so if anyone has any insight on
+	 * ways to force GCC to do these things in C I'm all ears.
+	 */
 
-				// see phy_data_set()
-				PHY_PORT_DATA_OUT.OUT = v;
-				dbp_release();
-				if (! (phy_bits_set[v] & 1))
-				{
-					dbp_assert();
-				}
+	// a hideous macro approaches
+	#define REP64(x) x x x x x x x x x x \
+			x x x x x x x x x x \
+			x x x x x x x x x x \
+			x x x x x x x x x x \
+			x x x x x x x x x x \
+			x x x x x x x x x x \
+			x x x x
+	#define REP512(x) REP64(x) REP64(x) REP64(x) REP64(x) \
+			REP64(x) REP64(x) REP64(x) REP64(x)
 
-				req_assert();
-				while (! phy_is_ack_asserted());
-				req_release();
-			}
-			while (i--);
-		}
-		else
-		{
-			do
-			{
-				usart->DATA = 0xFF;
-				while (! (usart->STATUS & USART_RXCIF_bm));
-				v = usart->DATA;
+	uint8_t max = 0xFF;
+	__asm__ __volatile__(
+			// fetch the pending value
+REP512(		"st Z, %0"					"\n\t"	// send 0xFF to card
+			"ld XL, Z"					"\n\t"	// fetch card data to XL
 
-				while (phy_is_ack_asserted());
-				PHY_PORT_DATA_OUT.OUT = v;
-				req_assert();
-				while (! phy_is_ack_asserted());
-				req_release();
-			}
-			while (i--);
-		}
-	}
+			// loop until /ACK is released
+	"1:"	"sbic %6, %7"				"\n\t"
+			"rjmp 1b"					"\n\t"
+
+			// output data to /DB0-7
+			"st Y, XL"					"\n\t"
+
+			// handle /DBP
+			"cbi %2, %3"				"\n\t"	// release /DBP
+			"ld __tmp_reg__, X"			"\n\t"	// fetch parity data value
+			"sbrs __tmp_reg__, 0"		"\n\t"	// skip next if odd
+			"sbi %2, %3"				"\n\t"	//   assert /DBP
+			"nop"						"\n\t"	// skew delay
+
+			// assert /REQ
+			"sbi %4, %5"				"\n\t"
+			"nop"						"\n\t"	// this adds 100kB/s on my
+												// system: hitting SBIS is
+												// expensive!
+
+			// loop until /ACK is asserted
+	"2:"	"sbis %6, %7"				"\n\t"
+			"rjmp 2b"					"\n\t"
+
+			// release /REQ
+			"cbi %4, %5"				"\n\t") /* end REP */
+
+			: // no output operands
+			: "r" (max), "X" (&(PHY_PORT_DATA_OUT.OUT)),
+			"I" (&(PHY_PORT_T_DBP.OUT)), "I" (PHY_PIN_T_DBP_BP),
+			"I" (&(PHY_PORT_T_REQ.OUT)), "I" (PHY_PIN_T_REQ_BP),
+			"I" (&(PHY_PORT_R_ACK.IN)), "I" (PHY_PIN_R_ACK_BP),
+			"x" (&phy_bits_set), "z" (&(usart->DATA)),
+			"y" (&(PHY_PORT_DATA_OUT.OUT))
+			: // no clobbers
+			);
 }
 
 void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
