@@ -495,24 +495,30 @@ void phy_data_offer_stream_block(USART_t* usart)
 	 * ways to force GCC to do these things in C I'm all ears.
 	 */
 
-	// a hideous macro approaches
-	#define REP64(x) x x x x x x x x x x \
-			x x x x x x x x x x \
-			x x x x x x x x x x \
-			x x x x x x x x x x \
-			x x x x x x x x x x \
-			x x x x x x x x x x \
-			x x x x
-	#define REP512(x) REP64(x) REP64(x) REP64(x) REP64(x) \
-			REP64(x) REP64(x) REP64(x) REP64(x)
+	#define REP2(x) x x
 
 	uint8_t max = 0xFF;
 	__asm__ __volatile__(
-			// fetch the pending value
-REP512(		"st Z, %0"					"\n\t"	// send 0xFF to card
+			// fetch the first iteration's data
+			"st Z, %0"					"\n\t"	// send 0xFF to card
 			"ld XL, Z"					"\n\t"	// fetch card data to XL
 
-			// loop until /ACK is released
+			// and the parity value for it
+			"ld __tmp_reg__, X"			"\n\t"
+
+			// setup for the loop, start at 0 for 256 iterations per repeat
+			"clr r18"					"\n\t"
+
+			// make sure we have enough time for the last 0xFF to cycle
+			// before the looping starts
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+
+REP2(		// loop until /ACK is released
 	"1:"	"sbic %6, %7"				"\n\t"
 			"rjmp 1b"					"\n\t"
 
@@ -521,23 +527,34 @@ REP512(		"st Z, %0"					"\n\t"	// send 0xFF to card
 
 			// handle /DBP
 			"cbi %2, %3"				"\n\t"	// release /DBP
-			"ld __tmp_reg__, X"			"\n\t"	// fetch parity data value
 			"sbrs __tmp_reg__, 0"		"\n\t"	// skip next if odd
 			"sbi %2, %3"				"\n\t"	//   assert /DBP
-			"nop"						"\n\t"	// skew delay
+
+			// fetch the data value for the next iteration
+			"st Z, %0"					"\n\t"	// send 0xFF to card
+			"ld XL, Z"					"\n\t"	// fetch card data to XL
 
 			// assert /REQ
 			"sbi %4, %5"				"\n\t"
-			"nop"						"\n\t"	// this adds 100kB/s on my
-												// system: hitting SBIS is
-												// expensive!
+
+			// fetch parity for next iteration
+			"ld __tmp_reg__, X"			"\n\t"
+
+			// --loop [SREG preserved during /ACK check]
+			"dec r18"					"\n\t"
 
 			// loop until /ACK is asserted
 	"2:"	"sbis %6, %7"				"\n\t"
 			"rjmp 2b"					"\n\t"
 
 			// release /REQ
-			"cbi %4, %5"				"\n\t") /* end REP */
+			"cbi %4, %5"				"\n\t"
+
+			// then back to the loop start
+			"brne 1b"					"\n\t") /* end REP */
+
+			// restore X to what it was before call just in case
+			"clr XL"					"\n\t"
 
 			: // no output operands
 			: "r" (max), "X" (&(PHY_PORT_DATA_OUT.OUT)),
@@ -546,7 +563,7 @@ REP512(		"st Z, %0"					"\n\t"	// send 0xFF to card
 			"I" (&(PHY_PORT_R_ACK.IN)), "I" (PHY_PIN_R_ACK_BP),
 			"x" (&phy_bits_set), "z" (&(usart->DATA)),
 			"y" (&(PHY_PORT_DATA_OUT.OUT))
-			: // no clobbers
+			: "r18" // <- clobbers
 			);
 }
 

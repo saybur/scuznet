@@ -202,12 +202,15 @@ void phy_data_offer_bulk(uint8_t*, uint16_t);
 void phy_data_offer_stream(USART_t*, uint16_t);
 
 /*
- * As above, but for fixed lengths of 512 bytes.
+ * Specialized version of the above call for use with the memory card. This
+ * will always transfer a fixed length of 512 bytes, trash one additional byte
+ * from the USART, and leave one byte pending in transmission. This call
+ * offers higher throughput than the above function.
  */
 void phy_data_offer_stream_block(USART_t*);
 
 /*
- * Specialized version of the above call, for use with the link device. This
+ * Specialized version of _offer_stream(), for use with the link device. This
  * version does two things differently:
  * 
  * 1) It will not push an additional byte into the USART at the end of the
