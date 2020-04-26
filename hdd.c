@@ -33,7 +33,7 @@
 #define HDD_INQUIRY_LENGTH 36
 const uint8_t inquiry_data[] PROGMEM = {
 	0x00, 0x00, 0x02, 0x02,
-	0x00, 0x00, 0x00, 0x00,
+	0x1F, 0x00, 0x00, 0x00,
 	' ', 's', 'c', 'u', 'z', 'n', 'e', 't',
 	' ', 's', 'c', 'u', 'z', 'n', 'e', 't',
 	' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 
@@ -88,7 +88,7 @@ static void hdd_inquiry(uint8_t* cmd)
 	uint8_t alloc = cmd[4];
 	if (alloc > HDD_INQUIRY_LENGTH)
 		alloc = HDD_INQUIRY_LENGTH;
-	
+
 	logic_data_in_pgm(inquiry_data, alloc);
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
