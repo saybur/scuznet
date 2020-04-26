@@ -766,7 +766,28 @@ static void hdd_mode_sense(uint8_t* cmd)
 		}
 	}
 
-	// TODO: Linux asks for page 0x08 specifically, needs to be implemented.
+	// cache page
+	if (cmd_page == 0x08 || cmd_page == 0x3F)
+	{
+		page_found = 1;
+
+		mode_data[mode_pos++] = 0x08;
+		mode_data[mode_pos++] = 0x0A;
+
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x01; // only RCD set, no read cache
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		for (uint8_t i = 1; i < 0x0A; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+	}
 
 	// finally, either send or error out, depending on if any page matched.
 	if (page_found)
