@@ -517,6 +517,10 @@ void phy_data_offer_stream_block(USART_t* usart)
 			"nop"						"\n\t"
 			"nop"						"\n\t"
 			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
+			"nop"						"\n\t"
 
 REP2(		// loop until /ACK is released
 	"1:"	"sbic %6, %7"				"\n\t"
