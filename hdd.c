@@ -766,6 +766,8 @@ static void hdd_mode_sense(uint8_t* cmd)
 		}
 	}
 
+	// TODO: Linux asks for page 0x08 specifically, needs to be implemented.
+
 	// finally, either send or error out, depending on if any page matched.
 	if (page_found)
 	{
