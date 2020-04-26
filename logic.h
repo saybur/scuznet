@@ -276,6 +276,13 @@ void logic_status(uint8_t);
 uint8_t logic_data_out(uint8_t*, uint8_t);
 
 /*
+ * Version of the above that consigns data from the initiator to oblivion.
+ * Useful for when we want to ignore dumb instructions. Provide with the number
+ * of bytes we should ask for.
+ */
+void logic_data_out_dummy(uint8_t);
+
+/*
  * Moves to the DATA IN phase and sends an array of data in memory to the
  * initiator.
  * 

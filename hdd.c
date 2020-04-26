@@ -49,6 +49,15 @@ static uint8_t capacity_data[8] = {
 static uint8_t hdd_ready;
 static uint8_t hdd_error;
 
+// cache for storing page data
+static uint8_t mode_data[256];
+
+// generic buffer for READ/WRITE BUFFER commands
+#define BUFFER_LENGTH 68
+static uint8_t buffer[BUFFER_LENGTH] = {
+	0x00, 0x00, 0x00, 0x40
+};
+
 /*
  * ============================================================================
  * 
@@ -197,7 +206,17 @@ static void hdd_read(uint8_t* cmd)
 		 * requires termination) if more than 1 block, which appears to be
 		 * required for some picky cards.
 		 */
-		uint8_t opcode = (op.length == 1 ? 17 : 18);
+		uint8_t opcode;
+		if (op.length == 1)
+		{
+			opcode = 17;
+			debug(DEBUG_HDD_READ_SINGLE);
+		}
+		else
+		{
+			opcode = 18;
+			debug(DEBUG_HDD_READ_MULTIPLE);
+		}
 		uint8_t v = mem_op_cmd_args(opcode, op.lba);
 		if (v != 0x00)
 		{
@@ -216,7 +235,6 @@ static void hdd_read(uint8_t* cmd)
 		phy_phase(PHY_PHASE_DATA_IN);
 		for (uint16_t i = 0; i < op.length; i++)
 		{
-			debug(DEBUG_HDD_PACKET_START);
 			v = mem_wait_for_data();
 			if (v == MEM_DATA_TOKEN)
 			{
@@ -310,7 +328,17 @@ static void hdd_write(uint8_t* cmd)
 		 * requires termination) if more than 1 block, which appears to be
 		 * required for some picky cards.
 		 */
-		uint8_t opcode = (op.length == 1 ? 24 : 25);
+		uint8_t opcode;
+		if (op.length == 1)
+		{
+			opcode = 24;
+			debug(DEBUG_HDD_WRITE_SINGLE);
+		}
+		else
+		{
+			opcode = 25;
+			debug(DEBUG_HDD_WRITE_MULTIPLE);
+		}
 		uint8_t v = mem_op_cmd_args(opcode, op.lba);
 		if (v != 0x00)
 		{
@@ -345,7 +373,6 @@ static void hdd_write(uint8_t* cmd)
 				response = MEM_USART.DATA;
 			}
 			while (response != 0xFF);
-			debug(DEBUG_HDD_PACKET_START);
 
 			/*
 			 * Send start token, then send 512 bytes of data. This will
@@ -455,6 +482,439 @@ static void hdd_write(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
+static void hdd_mode_sense(uint8_t* cmd)
+{
+	if (! hdd_ready)
+	{
+		debug(DEBUG_HDD_NOT_READY);
+		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	debug(DEBUG_HDD_MODE_SENSE);
+
+	// extract basic command values
+	uint8_t cmd_dbd = cmd[1] & 0x8;
+	uint8_t cmd_pc = (cmd[2] & 0xC0) >> 6;
+	uint8_t cmd_page = cmd[2] & 0x3F;
+
+	// reset result length values
+	mode_data[0] = 0;
+	mode_data[1] = 0;
+
+	// get allocation length and set the block descriptor basics,
+	// which vary between the (6) and (10) command variants.
+	uint8_t cmd_alloc;
+	uint8_t mode_pos;
+	if (cmd[0] == 0x5A)
+	{
+		// allocation length, limit to 8 bits (we never will use more)
+		if (cmd[7] > 0)
+		{
+			cmd_alloc = 255;
+		}
+		else
+		{
+			cmd_alloc = cmd[8];
+		}
+
+		// header values
+		mode_pos = 2;
+		mode_data[mode_pos++] = 0x00; // default medium
+		mode_data[mode_pos++] = 0x00; // not write protected
+
+		// reserved
+		mode_data[mode_pos++] = 0;
+		mode_data[mode_pos++] = 0;
+
+		// include block descriptor?
+		mode_data[mode_pos++] = 0;
+		if (cmd_dbd)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x08;
+		}
+	}
+	else
+	{
+		// allocation length
+		cmd_alloc = cmd[4];
+
+		// header values
+		mode_pos = 1;
+		mode_data[mode_pos++] = 0x00; // default medium
+		mode_data[mode_pos++] = 0x00; // not write protected
+
+		// include block descriptor?
+		if (cmd_dbd)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x08;
+		}
+	}
+
+	// append block descriptors, if allowed
+	if (! cmd_dbd)
+	{
+		mode_data[mode_pos++] = 0x00; // density
+		mode_data[mode_pos++] = 0x00; // blocks MSB
+		mode_data[mode_pos++] = 0x00;
+		mode_data[mode_pos++] = 0x00;
+		mode_data[mode_pos++] = 0x00; // reserved
+		mode_data[mode_pos++] = 0x00; // block length MSB
+		mode_data[mode_pos++] = 0x02;
+		mode_data[mode_pos++] = 0x00;
+	}
+
+	/*
+	 * Append pages in descending order as we get to them.
+	 */
+	uint8_t page_found = 0;
+
+	// R/W error recovery page
+	if (cmd_page == 0x01 || cmd_page == 0x3F)
+	{
+		page_found = 1;
+
+		mode_data[mode_pos++] = 0x01;
+		mode_data[mode_pos++] = 0x0A;
+		for (uint8_t i = 0; i < 0x0A; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+	}
+
+	// disconnect/reconnect page
+	if (cmd_page == 0x02 || cmd_page == 0x3F)
+	{
+		mode_data[mode_pos++] = 0x02;
+		mode_data[mode_pos++] = 0x0E;
+		for (uint8_t i = 0; i < 0x0E; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+	}
+
+	// format page
+	if (cmd_page == 0x03 || cmd_page == 0x3F)
+	{
+		page_found = 1;
+
+		mode_data[mode_pos++] = 0x03;
+		mode_data[mode_pos++] = 0x16;
+		for (uint8_t i = 0; i < 8; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// sectors per track, fixed @ 32
+		mode_data[mode_pos++] = 0x00;
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 32;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0;
+		}
+
+		// bytes per sector, fixed @ 512
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x02;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+		mode_data[mode_pos++] = 0x00;
+
+		// interleave, fixed @ 1
+		mode_data[mode_pos++] = 0x00;
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x01;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// track skew, cyl skew
+		for (uint8_t i = 0; i < 4; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// flags in byte 20
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x40; // hard sectors only
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// remaining reserved bytes
+		for (uint8_t i = 0; i < 3; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+	}
+
+	// rigid disk geometry page
+	uint8_t cyl[3];
+	if (cmd_page == 0x04 || cmd_page == 0x3F)
+	{
+		page_found = 1;
+
+		/*
+		 * We always report 128 heads and 32 sectors per track, so only
+		 * cylinder data needs to be reported as a variable based on the
+		 * volume capacity. With a fixed 512 byte sector size, this allows
+		 * incrementing in 4096 block steps, or 2MB each.
+		 */
+		cyl[0] = capacity_data[0] >> 4;
+		cyl[1] = (capacity_data[0] << 4) | (capacity_data[1] >> 4);
+		cyl[2] = (capacity_data[1] << 4) | (capacity_data[2] >> 4);
+
+		mode_data[mode_pos++] = 0x04;
+		mode_data[mode_pos++] = 0x16;
+
+		// cylinders
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = cyl[0];
+			mode_data[mode_pos++] = cyl[1];
+			mode_data[mode_pos++] = cyl[2];
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+			mode_data[mode_pos++] = 0x00;
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// heads
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x80;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// disable the next fields by setting to max cyl
+		for (uint8_t j = 0; j < 2; j++)
+		{
+			for (uint8_t i = 0; i < 3; i++)
+			{
+				if (cmd_pc != 0x01)
+				{
+					mode_data[mode_pos++] = cyl[i];
+				}
+				else
+				{
+					mode_data[mode_pos++] = 0x00;
+				}
+			}
+		}
+
+		// step rate
+		mode_data[mode_pos++] = 0x00;
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x01;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// defaults for the next values
+		for (uint8_t i = 0; i < 6; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// medium rotation rate... say, maybe 10,000 RPM?
+		if (cmd_pc != 0x01)
+		{
+			mode_data[mode_pos++] = 0x27;
+			mode_data[mode_pos++] = 0x10;
+		}
+		else
+		{
+			mode_data[mode_pos++] = 0x00;
+			mode_data[mode_pos++] = 0x00;
+		}
+
+		// defaults for the next values
+		for (uint8_t i = 0; i < 2; i++)
+		{
+			mode_data[mode_pos++] = 0x00;
+		}
+	}
+
+	// finally, either send or error out, depending on if any page matched.
+	if (page_found)
+	{
+		if (mode_pos > cmd_alloc)
+			mode_pos = cmd_alloc;
+		if (cmd[0] == 0x5A)
+		{
+			mode_data[1] = mode_pos - 2;
+		}
+		else
+		{
+			mode_data[0] = mode_pos - 1;
+		}
+
+		logic_data_in(mode_data, mode_pos);
+		logic_status(LOGIC_STATUS_GOOD);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+	}
+	else
+	{
+		logic_cmd_illegal_arg(2);
+	}
+}
+
+static void hdd_verify(uint8_t* cmd)
+{
+	debug(DEBUG_HDD_VERIFY);
+	if (! hdd_ready)
+	{
+		debug(DEBUG_HDD_NOT_READY);
+		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	if (cmd[1] & 1)
+	{
+		// RelAdr set
+		logic_cmd_illegal_arg(1);
+		return;
+	}
+	if (cmd[1] & 2)
+	{
+		/*
+		 * This is a dummy operation: we just pretend to care about what the
+		 * initiator is asking for, and we don't verify anything: just get
+		 * the DATA IN length we need to do and report that everything is OK.
+		 */
+		phy_phase(PHY_PHASE_DATA_IN);
+		uint16_t len = (cmd[7] << 8) | cmd[8];
+		for (uint16_t i = 0; i < len; i++)
+		{
+			for (uint16_t j = 0; j < 512; j++)
+			{
+				// this will be glacial, but this should be an uncommon
+				// operation anyway
+				phy_data_ask();
+			}
+		}
+	}
+
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
+static void hdd_read_buffer(uint8_t* cmd)
+{
+	debug(DEBUG_HDD_READ_BUFFER);
+	uint8_t cmd_mode = cmd[1] & 0x7;
+	// we only support mode 0
+	if (cmd_mode)
+	{
+		logic_cmd_illegal_arg(1);
+		return;
+	}
+
+	// figure how long the READ BUFFER needs to be
+	uint8_t length;
+	if (cmd[6] > 0 || cmd[7] > 0)
+	{
+		length = 255;
+	}
+	else
+	{
+		length = cmd[8];
+	}
+	if (length > BUFFER_LENGTH)
+	{
+		length = BUFFER_LENGTH;
+	}
+
+	// send the data
+	logic_data_in(buffer, length);
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
+static void hdd_write_buffer(uint8_t* cmd)
+{
+	debug(DEBUG_HDD_WRITE_BUFFER);
+	uint8_t cmd_mode = cmd[1] & 0x7;
+	// we only support mode 0
+	if (cmd_mode)
+	{
+		logic_cmd_illegal_arg(1);
+		return;
+	}
+
+	uint8_t length = cmd[8];
+	if (cmd[6] > 0
+			|| cmd[7] > 0
+			|| length > BUFFER_LENGTH - 4)
+	{
+		// too long
+		logic_cmd_illegal_op();
+		return;
+	}
+	if (length < 4)
+	{
+		// too short?
+		logic_status(LOGIC_STATUS_GOOD);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	phy_phase(PHY_PHASE_DATA_OUT);
+	for (uint8_t i = 0; i < 4; i++)
+	{
+		phy_data_ask();
+	}
+	logic_data_out(buffer + 4, length);
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
+// hacky version that just accepts without complaint anything
+static void hdd_mode_select(uint8_t* cmd)
+{
+	debug(DEBUG_HDD_MODE_SELECT);
+	uint8_t length = cmd[4];
+	if (length > 0)
+	{
+		logic_data_out_dummy(length);
+	}
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
 /*
  * ============================================================================
  * 
@@ -465,10 +925,14 @@ static void hdd_write(uint8_t* cmd)
 
 void hdd_set_ready(uint32_t blocks)
 {
+	/*
+	 * We strip off the low 12 bits to conform with the sizing reported by the
+	 * rigid disk geometry page in MODE SENSE.
+	 */
 	capacity_data[0] = (uint8_t) (blocks >> 24);
 	capacity_data[1] = (uint8_t) (blocks >> 16);
-	capacity_data[2] = (uint8_t) (blocks >> 8);
-	capacity_data[3] = (uint8_t) blocks;
+	capacity_data[2] = (uint8_t) ((blocks >> 8) & 0xF0);
+	capacity_data[3] = 0;
 	hdd_ready = 1;
 	hdd_error = 0;
 }
@@ -521,6 +985,22 @@ void hdd_main(void)
 		case 0x0A: // WRITE(6)
 		case 0x2A: // WRITE(10)
 			hdd_write(cmd);
+			break;
+		case 0x1A: // MODE SENSE(6)
+		case 0x5A: // MODE SENSE(10)
+			hdd_mode_sense(cmd);
+			break;
+		case 0x15: // MODE SELECT(6)
+			hdd_mode_select(cmd);
+			break;
+		case 0x2F: // VERIFY
+			hdd_verify(cmd);
+			break;
+		case 0x3C: // READ BUFFER
+			hdd_read_buffer(cmd);
+			break;
+		case 0x3B: // WRITE BUFFER
+			hdd_write_buffer(cmd);
 			break;
 		default:
 			logic_cmd_illegal_op();

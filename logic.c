@@ -449,6 +449,21 @@ uint8_t logic_data_out(uint8_t* data, uint8_t len)
 	return i;
 }
 
+void logic_data_out_dummy(uint8_t len)
+{
+	if (! phy_is_active()) return;
+
+	phy_phase(PHY_PHASE_DATA_OUT);
+	for (uint8_t i = 0; i < len; i++)
+	{
+		phy_data_ask();
+	}
+	if (phy_is_atn_asserted())
+	{
+		logic_message_out();
+	}
+}
+
 void logic_data_in(uint8_t* data, uint8_t len)
 {
 	if (! phy_is_active()) return;
@@ -489,6 +504,8 @@ void logic_data_in_pgm(const uint8_t* data, uint8_t len)
 
 void logic_cmd_illegal_op(void)
 {
+	debug(DEBUG_LOGIC_BAD_CMD);
+
 	// update sense data
 	devices[device_id].sense_data[0] = 0x80;
 	for (uint8_t i = 1; i < 18; i++)
@@ -506,6 +523,8 @@ void logic_cmd_illegal_op(void)
 
 void logic_cmd_illegal_arg(uint8_t position)
 {
+	debug(DEBUG_LOGIC_BAD_CMD_ARGS);
+
 	// update sense data
 	devices[device_id].sense_data[0] = 0x80;
 	for (uint8_t i = 1; i < 18; i++)
