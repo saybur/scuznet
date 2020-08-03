@@ -1,5 +1,5 @@
 PROGRAMMER := avrispv2
-MCU := atxmega128a3u
+MCU := atxmega64a3u
 F_CPU := 32000000
 OPTIONS := -DHW_V01 -DDEBUGGING
 
