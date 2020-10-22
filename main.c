@@ -18,6 +18,7 @@
  */
 
 #include <avr/io.h>
+#include <util/delay.h>
 #include "config.h"
 #include "debug.h"
 #include "enc.h"
@@ -77,6 +78,21 @@ int main(void)
 		mem_init();
 	#endif
 	init_isr();
+
+	// fail here if there was a brown-out, so we can easily tell if the
+	// PSU is having problems
+	uint8_t rst_stat = RST.STATUS;
+	RST.STATUS = 0xFF; // clear all flags for next reboot (?)
+	if (rst_stat & RST_BORF_bm)
+	{
+		while (1)
+		{
+			led_on();
+			_delay_ms(500);
+			led_off();
+			_delay_ms(500);
+		}
+	}
 
 	// read device configuration and assign values we need from it
 	uint8_t device_config[CONFIG_EEPROM_LENGTH];
