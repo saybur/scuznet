@@ -47,6 +47,8 @@ The control line flash codes are as follows:
 * I/O: 6
 * MSG: 7
 * REQ: 8
+* BSY: 9
+* DBP: 10
 
 License
 -------

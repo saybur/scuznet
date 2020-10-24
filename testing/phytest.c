@@ -50,7 +50,7 @@ static uint8_t test_set_bits(uint8_t value)
 			return i + 1;
 		}
 	}
-	return 9;
+	return 0;
 }
 
 #ifdef PHY_PORT_DATA_IN_REVERSED
@@ -92,6 +92,18 @@ static inline __attribute__((always_inline)) uint8_t phy_read(void)
 	#else
 		return raw;
 	#endif
+}
+
+static uint16_t phy_read_ctrl(void)
+{
+	uint16_t v = 0;
+	if (PHY_PORT_R_DBP.IN & PHY_PIN_R_DBP) v |= _BV(DBP_BIT);
+	if (PHY_PORT_R_BSY.IN & PHY_PIN_R_BSY) v |= _BV(BSY_BIT);
+	if (PHY_PORT_R_SEL.IN & PHY_PIN_R_SEL) v |= _BV(SEL_BIT);
+	if (PHY_PORT_R_ATN.IN & PHY_PIN_R_ATN) v |= _BV(ATN_BIT);
+	if (PHY_PORT_R_RST.IN & PHY_PIN_R_RST) v |= _BV(RST_BIT);
+	if (PHY_PORT_R_ACK.IN & PHY_PIN_R_ACK) v |= _BV(ACK_BIT);
+	return v;
 }
 
 void phy_init(void)
@@ -147,32 +159,44 @@ void phy_check(void)
 	// check for data line shorts
 	PHY_PORT_DATA_OUT.DIR = 0x00;
 	PHY_PORT_DATA_OUT.OUT = 0xFF;
-	uint8_t mask = 1;
+	uint8_t dmask = 1;
 	for (uint8_t i = 1; i <= 8; i++)
 	{
 		// drive the line, and wait a moment for it to stabilize
-		PHY_PORT_DATA_OUT.DIR = mask;
+		PHY_PORT_DATA_OUT.DIR = dmask;
 		_delay_us(1);
 
 		// test the output port
 		uint8_t read = PHY_PORT_DATA_OUT.IN;
-		if (read != mask)
+		if (read != dmask)
 		{
 			PHY_PORT_DATA_OUT.DIR = 0x00;
-			read &= ~mask;
+			read &= ~dmask;
 			led_flash(2, i, test_set_bits(read));
 		}
 
 		// now the reading port
 		read = phy_read();
-		if (read != mask)
+		if (read != dmask)
 		{
 			PHY_PORT_DATA_OUT.DIR = 0x00;
-			read &= ~mask;
+			read &= ~dmask;
 			led_flash(3, i, test_set_bits(read));
 		}
 
 		PHY_PORT_DATA_OUT.DIR = 0x00;
-		mask = mask << 1;
+		dmask = dmask << 1;
+	}
+
+	// check for bad data lines when nothing is asserted
+	uint16_t cmask = phy_read_ctrl();
+	if (cmask)
+	{
+		uint16_t m = 1;
+		for (uint16_t i = 1; i <= 10; i++)
+		{
+			if (cmask & m) led_flash(4, i, 1);
+			m = m << 1;
+		}
 	}
 }

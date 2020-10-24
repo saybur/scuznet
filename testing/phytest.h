@@ -22,6 +22,17 @@
 
 #include <avr/io.h>
 
+#define ACK_BIT 1
+#define SEL_BIT 2
+#define ATN_BIT 3
+#define RST_BIT 4
+#define CD_BIT  5
+#define IO_BIT  6
+#define MSG_BIT 7
+#define REQ_BIT 8
+#define BSY_BIT 9
+#define DBP_BIT 10
+
 void phy_init(void);
 void phy_check(void);
 
