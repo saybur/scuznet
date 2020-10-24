@@ -33,8 +33,8 @@ pulses in the list below to see what the error means.
   not working).
 * 2-x-y: TDB(x-1) is causing TDB(y-1) to change unexpectedly.
 * 3-x-y: TDB(x-1) is causing RDB(y-1) to change unexpectedly.
-* 4-x-1: control line is registering assertion when not asserted.
-* 4-x-2: control line is not registering assertion when asserted.
+* 4-x-1: control line is registering assertion while released.
+* 4-x-2: control line is not registering assertion while driven.
 * 5-x-y: control line 'x' is causing control line 'y' to change unexpectedly.
 
 The control line flash codes are as follows:
