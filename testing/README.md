@@ -18,10 +18,10 @@ In all other cases, the LED will flash a number of long pulses, then a number
 of short pulses, then an optional set of long pulses. Look up the respective
 pulses in the list below to see what the error means.
 
-* 1-x-0: TDB(x+1) is registering '1' when not being driven (external pull-down 
+* 1-x-0: TDB(x-1) is registering '1' when not being driven (external pull-down 
   not working).
-* 2-x-y: TDB(x+1) is causing TDB(y+1) to change unexpectedly.
-* 3-x-y: TDB(x+1) is causing RDB(y+1) to change unexpectedly.
+* 2-x-y: TDB(x-1) is causing TDB(y-1) to change unexpectedly.
+* 3-x-y: TDB(x-1) is causing RDB(y-1) to change unexpectedly.
 
 # License
 
