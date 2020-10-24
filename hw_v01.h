@@ -141,6 +141,7 @@
 #define PHY_PORT_R_SEL          VPORT2
 #define PHY_PORT_R_ATN          VPORT2
 #define PHY_PORT_R_ACK          VPORT3
+#define PHY_PORT_R_DBP          VPORT2
 #define PHY_PORT_T_BSY          VPORT3
 #define PHY_PORT_T_SEL          VPORT2
 #define PHY_PORT_T_MSG          VPORT3
@@ -157,6 +158,7 @@
 #define PHY_PIN_R_ATN           PIN5_bm
 #define PHY_PIN_R_ACK           PIN2_bm
 #define PHY_PIN_R_ACK_BP        PIN2_bp
+#define PHY_PIN_R_DBP           PIN2_bm
 #define PHY_PIN_T_BSY           PIN0_bm
 #define PHY_PIN_T_SEL           PIN1_bm
 #define PHY_PIN_T_MSG           PIN5_bm
