@@ -73,7 +73,7 @@ static uint8_t phy_reverse_table[256] = {
 	143, 79, 207, 47, 175, 111, 239, 31, 159, 95, 223, 63, 191, 127, 255
 };
 #endif
-static inline __attribute__((always_inline)) uint8_t phy_read(void)
+static uint8_t phy_read(void)
 {
 	uint8_t raw;
 
@@ -97,13 +97,83 @@ static inline __attribute__((always_inline)) uint8_t phy_read(void)
 static uint16_t phy_read_ctrl(void)
 {
 	uint16_t v = 0;
-	if (PHY_PORT_R_DBP.IN & PHY_PIN_R_DBP) v |= _BV(DBP_BIT);
-	if (PHY_PORT_R_BSY.IN & PHY_PIN_R_BSY) v |= _BV(BSY_BIT);
+
+	// perform reading on the input lines tied to the inverter
 	if (PHY_PORT_R_SEL.IN & PHY_PIN_R_SEL) v |= _BV(SEL_BIT);
 	if (PHY_PORT_R_ATN.IN & PHY_PIN_R_ATN) v |= _BV(ATN_BIT);
 	if (PHY_PORT_R_RST.IN & PHY_PIN_R_RST) v |= _BV(RST_BIT);
 	if (PHY_PORT_R_ACK.IN & PHY_PIN_R_ACK) v |= _BV(ACK_BIT);
+	if (PHY_PORT_R_BSY.IN & PHY_PIN_R_BSY) v |= _BV(BSY_BIT);
+	if (PHY_PORT_R_DBP.IN & PHY_PIN_R_DBP) v |= _BV(DBP_BIT);
+
+	// then do the lines crossed-over to the data pin reader
+	uint8_t d = phy_read();
+	if (d & _BV(REQ_BIT)) v |= _BV(REQ_BIT);
+	if (d & _BV(MSG_BIT)) v |= _BV(MSG_BIT);
+	if (d & _BV(IO_BIT)) v |= _BV(IO_BIT);
+	if (d & _BV(CD_BIT)) v |= _BV(CD_BIT);
+
 	return v;
+}
+
+static void phy_ctrl_test(VPORT_t* port, uint8_t bitmask, uint8_t bitpos)
+{
+	// drive lines and let them stabilize
+	port->OUT |= bitmask;
+	port->DIR |= bitmask;
+	_delay_us(0.2);
+
+	// read information
+	uint16_t cmask = phy_read_ctrl();
+
+	// release lines
+	port->DIR &= ~bitmask;
+	port->OUT &= ~bitmask;
+
+	// check the pin that should be driven to '1'
+	if (! (cmask & _BV(bitpos))) led_flash(4, bitpos, 2);
+
+	// then make sure all other pins are '0'
+	cmask &= ~_BV(bitpos);
+	if (cmask)
+	{
+		uint16_t m = 1;
+		for (uint8_t i = 1; i <= 10; i++)
+		{
+			if (cmask & m) led_flash(5, bitpos, i);
+			m = m << 1;
+		}
+	}
+}
+
+static void phy_ctrl_test2(PORT_t* port, uint8_t bitmask, uint8_t bitpos)
+{
+	// drive lines and let them stabilize
+	port->OUT |= bitmask;
+	port->DIR |= bitmask;
+	_delay_us(0.2);
+
+	// read information
+	uint16_t cmask = phy_read_ctrl();
+
+	// release lines
+	port->DIR &= ~bitmask;
+	port->OUT &= ~bitmask;
+
+	// check the pin that should be driven to '1'
+	if (! (cmask & _BV(bitpos))) led_flash(4, bitpos, 2);
+
+	// then make sure all other pins are '0'
+	cmask &= ~_BV(bitpos);
+	if (cmask)
+	{
+		uint16_t m = 1;
+		for (uint8_t i = 1; i <= 10; i++)
+		{
+			if (cmask & m) led_flash(5, bitpos, i);
+			m = m << 1;
+		}
+	}
 }
 
 void phy_init(void)
@@ -188,7 +258,7 @@ void phy_check(void)
 		dmask = dmask << 1;
 	}
 
-	// check for bad data lines when nothing is asserted
+	// check for bad control lines when nothing is asserted
 	uint16_t cmask = phy_read_ctrl();
 	if (cmask)
 	{
@@ -199,4 +269,18 @@ void phy_check(void)
 			m = m << 1;
 		}
 	}
+
+	// check control lines with drivers
+	phy_ctrl_test(&PHY_PORT_T_BSY, PHY_PIN_T_BSY, BSY_BIT);
+	phy_ctrl_test(&PHY_PORT_T_DBP, PHY_PIN_T_DBP, DBP_BIT);
+	phy_ctrl_test(&PHY_PORT_T_SEL, PHY_PIN_T_SEL, SEL_BIT);
+	phy_ctrl_test(&PHY_PORT_T_REQ, PHY_PIN_T_REQ, REQ_BIT);
+	phy_ctrl_test(&PHY_PORT_T_IO, PHY_PIN_T_IO, IO_BIT);
+	phy_ctrl_test(&PHY_PORT_T_CD, PHY_PIN_T_CD, CD_BIT);
+	phy_ctrl_test(&PHY_PORT_T_MSG, PHY_PIN_T_MSG, MSG_BIT);
+
+	// then check control lines without drivers via the data pin drivers
+	phy_ctrl_test2(&PHY_PORT_DATA_OUT, _BV(ATN_BIT), ATN_BIT);
+	phy_ctrl_test2(&PHY_PORT_DATA_OUT, _BV(ACK_BIT), ACK_BIT);
+	phy_ctrl_test2(&PHY_PORT_DATA_OUT, _BV(RST_BIT), RST_BIT);
 }
