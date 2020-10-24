@@ -272,6 +272,10 @@ int main(void)
 		mem_init();
 	#endif
 
+	// working board showing errors without this,
+	// due to termination power rising too slowly?
+	_delay_ms(100);
+
 	phy_check();
 
 	// all tests passed, pulse the LED
