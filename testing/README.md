@@ -36,6 +36,9 @@ pulses in the list below to see what the error means.
 * 4-x-1: control line is registering assertion while released.
 * 4-x-2: control line is not registering assertion while driven.
 * 5-x-y: control line 'x' is causing control line 'y' to change unexpectedly.
+* 6-1-0: Ethernet controller read register attempt failed.
+* 6-2-0: Ethernet controller write register attempt failed.
+* 6-3-0: Ethernet controller PHY read register attempt failed.
 
 The control line flash codes are as follows:
 

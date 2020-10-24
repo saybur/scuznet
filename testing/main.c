@@ -21,6 +21,7 @@
 #include <util/delay.h>
 #include "led.h"
 #include "phytest.h"
+#include "../enc.h"
 
 static void init_disable_jtag(void)
 {
@@ -37,24 +38,19 @@ static void init_disable_jtag(void)
 }
 
 #ifdef ENC_ENABLED
-static void enc_init(void)
+static void enc_check(void)
 {
-	ENC_PORT.OUTCLR = ENC_PIN_XCK;
-	ENC_PORT.OUTSET = ENC_PIN_TX | ENC_PIN_CS | ENC_PIN_RST;
-	ENC_PORT.DIRSET = ENC_PIN_XCK | ENC_PIN_TX | ENC_PIN_CS | ENC_PIN_RST;
-	ENC_RX_PINCTRL |= PORT_OPC_PULLUP_gc;
-	ENC_INT_PINCTRL |= PORT_INVEN_bm;
-
-	_delay_ms(1);
-	ENC_PORT.OUTCLR = ENC_PIN_RST;
-	_delay_us(50);
-	ENC_PORT.OUTSET = ENC_PIN_RST;
-	_delay_ms(1);
-
-	ENC_USART.BAUDCTRLA = ENC_USART_BAUDCTRL;
-	ENC_USART.BAUDCTRLB = 0;
-	ENC_USART.CTRLC = USART_CMODE_MSPI_gc;
-	ENC_USART.CTRLB = USART_RXEN_bm | USART_TXEN_bm;
+	uint8_t v;
+	enc_cmd_read(ENC_ERDPTL, &v);
+	if (v != 0xFA) led_flash(6, 1, 0);
+	v = 0xAA;
+	enc_cmd_write(ENC_ERDPTL, v);
+	enc_cmd_read(ENC_ERDPTL, &v);
+	if (v != 0xAA) led_flash(6, 2, 0);
+	uint16_t vl;
+	v = enc_phy_read(ENC_PHY_PHID1, &vl);
+	if (v) led_flash(6, 3, 0);
+	if (vl != 0x0083) led_flash(6, 4, 0);
 }
 #endif
 
@@ -88,6 +84,9 @@ int main(void)
 	_delay_ms(100);
 
 	phy_check();
+	#ifdef ENC_ENABLED
+		enc_check();
+	#endif
 
 	// all tests passed, pulse the LED
 	uint8_t x = 0;

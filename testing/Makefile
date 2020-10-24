@@ -9,7 +9,7 @@ CFLAGS ?= -std=c99 $(WARNINGS) -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(OPTIONS)
 AVRDUDE_FLAGS := -p $(MCU) -c $(PROGRAMMER) -P usb
 
 MAIN = program
-SRCS = led.c phytest.c main.c
+SRCS = led.c phytest.c ../enc.c main.c
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all
