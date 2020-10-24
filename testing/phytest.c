@@ -131,7 +131,7 @@ static void phy_ctrl_test(VPORT_t* port, uint8_t bitmask, uint8_t bitpos)
 	port->OUT &= ~bitmask;
 
 	// check the pin that should be driven to '1'
-	if (! (cmask & _BV(bitpos))) led_flash(4, bitpos, 2);
+	if (! (cmask & _BV(bitpos))) led_flash(4, bitpos + 1, 2);
 
 	// then make sure all other pins are '0'
 	cmask &= ~_BV(bitpos);
@@ -140,7 +140,7 @@ static void phy_ctrl_test(VPORT_t* port, uint8_t bitmask, uint8_t bitpos)
 		uint16_t m = 1;
 		for (uint8_t i = 1; i <= 10; i++)
 		{
-			if (cmask & m) led_flash(5, bitpos, i);
+			if (cmask & m) led_flash(5, bitpos + 1, i);
 			m = m << 1;
 		}
 	}
@@ -161,7 +161,7 @@ static void phy_ctrl_test2(PORT_t* port, uint8_t bitmask, uint8_t bitpos)
 	port->OUT &= ~bitmask;
 
 	// check the pin that should be driven to '1'
-	if (! (cmask & _BV(bitpos))) led_flash(4, bitpos, 2);
+	if (! (cmask & _BV(bitpos))) led_flash(4, bitpos + 1, 2);
 
 	// then make sure all other pins are '0'
 	cmask &= ~_BV(bitpos);
@@ -170,7 +170,7 @@ static void phy_ctrl_test2(PORT_t* port, uint8_t bitmask, uint8_t bitpos)
 		uint16_t m = 1;
 		for (uint8_t i = 1; i <= 10; i++)
 		{
-			if (cmask & m) led_flash(5, bitpos, i);
+			if (cmask & m) led_flash(5, bitpos + 1, i);
 			m = m << 1;
 		}
 	}
