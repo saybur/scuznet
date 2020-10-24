@@ -10,7 +10,18 @@ disconnected from the bus!
 This implementation is under development and has not been extensively tested.
 Suggestions are welcome.
 
-# Error Reports
+Test Rig
+--------
+
+Several control lines on the board do not have associated drivers to keep the
+part count down. To test everything, the following connections from the control
+lines to the data lines are needed. This could be done with jumper wires, or
+a specially-constructed DB25 male jack to allow easy re-use.
+
+![Wiring for the test device](dongle.png)
+
+Error Reports
+-------------
 
 If all tests pass, the board will pulse the status LED.
 
@@ -22,8 +33,23 @@ pulses in the list below to see what the error means.
   not working).
 * 2-x-y: TDB(x-1) is causing TDB(y-1) to change unexpectedly.
 * 3-x-y: TDB(x-1) is causing RDB(y-1) to change unexpectedly.
+* 4-x-1: control line is registering assertion when not asserted.
+* 4-x-2: control line is not registering assertion when asserted.
+* 5-x-y: control line 'x' is causing control line 'y' to change unexpectedly.
 
-# License
+The control line flash codes are as follows:
+
+* ACK: 1
+* SEL: 2
+* ATN: 3
+* RST: 4
+* C/D: 5
+* I/O: 6
+* MSG: 7
+* REQ: 8
+
+License
+-------
 
 Except where otherwise noted, all files in this repository are available under
 the terms of the GNU General Public License, version 3, available in the
