@@ -369,6 +369,12 @@ void link_init(uint8_t* mac, uint8_t target)
 
 void link_check_rx(void)
 {
+	// abort if we have not hit the disconnection delay
+	if (! (PHY_TIMER_DISCON.INTFLAGS & PHY_TIMER_DISCON_OVF))
+	{
+		return;
+	}
+
 	if (ENC_PORT.IN & ENC_PIN_INT)
 	{
 		if (last_identify & 0x40)

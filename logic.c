@@ -211,13 +211,15 @@ uint8_t logic_message_out(void)
 			else if (message == LOGIC_MSG_DISCONNECT)
 			{
 				/*
-				 * Send a DISCONNECT of our own, then hang up. We should also
-				 * technically delay attempts at arbitration as well.
+				 * Send a DISCONNECT of our own, hang up, and track the
+				 * duration to keep from reconnecting before we're allowed
 				 */
 				debug_dual(DEBUG_LOGIC_MESSAGE, LOGIC_MSG_DISCONNECT);
 				phy_phase(PHY_PHASE_MESSAGE_IN);
 				phy_data_offer(LOGIC_MSG_DISCONNECT);
 				phy_phase(PHY_PHASE_BUS_FREE);
+				PHY_TIMER_DISCON.CTRLFSET = TC_CMD_RESTART_gc;
+				PHY_TIMER_DISCON.INTFLAGS = PHY_TIMER_DISCON_OVF;
 			}
 			else if (message == LOGIC_MSG_INIT_DETECT_ERROR)
 			{
@@ -270,6 +272,7 @@ uint8_t logic_message_out(void)
 			else
 			{
 				// message is not supported
+				debug_dual(DEBUG_LOGIC_UNKNOWN_MESSAGE, message);
 				logic_message_in(LOGIC_MSG_REJECT);
 			}
 		}

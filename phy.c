@@ -129,15 +129,15 @@
  * Duration in cycles after /BSY goes up that arbitration start should occur.
  * This should be approximately 800ns and 2400ns respectively.
  */
-#define PHY_TIMER_BSY_CCA_VAL 26
-#define PHY_TIMER_BSY_CCB_VAL 76
+#define PHY_TIMER_BSY_CCA_VAL   26
+#define PHY_TIMER_BSY_CCB_VAL   76
 
 /*
  * The frequency of checks during reselection to see if the initiator has
  * set /BSY and is ready to proceed. A value of 1024 equates to a check about
  * every 32us @ 32MHz.
  */
-#define PHY_TIMER_RESEL_VAL 1024
+#define PHY_TIMER_RESEL_VAL     1024
 
 /*
  * Lookup values needed to swap a reversed port order back to normal, or take
@@ -390,6 +390,15 @@ void phy_init(uint8_t mask)
 	PHY_CFG_R_SEL |= PORT_ISC_RISING_gc;
 	PHY_PORT_CTRL_IN.INT0MASK = PHY_PIN_R_SEL;
 	PHY_PORT_CTRL_IN.INT1MASK = PHY_PIN_R_BSY;
+
+	/*
+	 * Setup timer that monitors the time elapsed since a DISCONNECT message
+	 * was received from the initiator. This will run continuously during
+	 * operation and be reset (along with the OVF flag) when DISCONNECT
+	 * occurs.
+	 */
+	PHY_TIMER_DISCON.PER = PHY_TIMER_DISCON_DELAY;
+	PHY_TIMER_DISCON.CTRLA = TC_CLKSEL_DIV64_gc;
 }
 
 void phy_init_hold(void)

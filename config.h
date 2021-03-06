@@ -201,6 +201,19 @@
 #define PHY_TIMER_RST_CHCTRL    EVSYS.CH6CTRL
 
 /*
+ * Timer used to monitor how long it has been since a DISCONNECT message was
+ * received from the initiator, to implement the disconnection delay.
+ */
+#define PHY_TIMER_DISCON        TCE0
+#define PHY_TIMER_DISCON_OVF    TC0_OVFIF_bm
+
+/*
+ * After a DISCONNECT message is received, wait this many Fclk/64 clocks before
+ * attempting to reselect the initiator.
+ */
+#define PHY_TIMER_DISCON_DELAY  125
+
+/*
  * ============================================================================
  *  
  *   CONFIGURATION CALLS

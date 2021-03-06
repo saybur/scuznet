@@ -40,6 +40,7 @@
 #define DEBUG_LOGIC_EXTENDED_MESSAGE              0x51
 #define DEBUG_LOGIC_BAD_CMD                       0x52
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
+#define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E
 #define DEBUG_LOGIC_MESSAGE                       0x5F
 #define DEBUG_HDD_MODE_SENSE                      0x7B
 #define DEBUG_HDD_MODE_SELECT                     0x7C
