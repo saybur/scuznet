@@ -253,22 +253,6 @@ uint8_t logic_message_out(void)
 			{
 				// ignore this message completely
 			}
-			else if (message == 0x01)
-			{
-				// ugh, extended message, which we read and dump to debug
-				debug(DEBUG_LOGIC_EXTENDED_MESSAGE);
-				uint8_t ext_len = phy_data_ask();
-				debug(ext_len);
-				uint16_t ext_real_len = ext_len;
-				if (ext_len == 0) ext_real_len = 256;
-				for (uint16_t i = 0; i < ext_real_len; i++)
-				{
-					debug(phy_data_ask());
-				}
-				// while we report them, they are not supported
-				// <<TODO THIS NEEDS BETTER HANDLING THAN JUST ACCEPTING>>
-				//logic_message_in(LOGIC_MSG_REJECT);
-			}
 			else
 			{
 				// message is not supported

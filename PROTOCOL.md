@@ -198,9 +198,12 @@ immediately after the bare minimum time in BUS FREE.  The device obeys
 DISCONNECT in this situation, responds to the message by transitioning to
 MESSAGE IN, sends a DISCONNECT of its own, then goes to bus free.
 
-MESSAGE OUT may respond with an extended message (0x01) with a length set to 3,
-the bytes of which are [0xFF, 0x00, 0x2B].  The exact purpose of this is not
-known. Ignoring it seems to be acceptable. At this point, I have not been
+After sending a packet, MESSAGE OUT may respond with an extended message
+(0x01) with length set to 3, a message code of 0xFF, and a pair of big-endian
+length bytes. This is a request for the initiator to send a packet. The device
+needs to switch to DATA OUT and accept a packet, as defined later, of the given
+length. Once the packet is accepted, the correct behavior appears to be sending
+a DISCONNECT message, then disconnecting. At this point, I have not been
 successful at observing this behavior on the real hardware.
 
 The packet format itself is straightforward.  First, a preamble is sent,

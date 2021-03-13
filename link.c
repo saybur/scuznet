@@ -234,12 +234,8 @@ static void link_set_filter(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void link_send_packet(uint8_t* cmd)
+static void link_send_packet(uint16_t length)
 {
-	debug(DEBUG_LINK_TX_REQUESTED);
-
-	// parse the packet header, limiting total length to 2047
-	uint16_t length = ((cmd[3] & 7) << 8) + cmd[4];
 	if (length > MAXIMUM_TRANSFER_LENGTH) length = MAXIMUM_TRANSFER_LENGTH;
 
 	// get devices in the right mode for a data transfer
@@ -259,8 +255,16 @@ static void link_send_packet(uint8_t* cmd)
 	enc_data_end();
 	net_transmit(txbuf, length + 1);
 	txbuf = txbuf ? 0 : 1;
+}
 
-	// indicate OK on RX
+static void link_send_packet_cmd(uint8_t* cmd)
+{
+	debug(DEBUG_LINK_TX_REQUESTED);
+
+	uint16_t length = ((cmd[3] & 7) << 8) + cmd[4];
+	link_send_packet(length);
+
+	// indicate OK on TX
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
@@ -342,6 +346,70 @@ static void link_skip_packet(void)
 	enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
 }
 
+static uint16_t link_message_out_post_rx(void)
+{
+	if (! phy_is_active()) return 0;
+
+	phy_phase(PHY_PHASE_MESSAGE_OUT);
+
+	uint8_t message = phy_data_ask();
+	if (message == LOGIC_MSG_NO_OPERATION)
+	{
+		// normal post-RX response, no action needed
+		return 0;
+	}
+	else if (message == 0x01)
+	{
+		// extended message
+		uint8_t ext_len = phy_data_ask();
+		if (ext_len == 3)
+		{
+			uint8_t ext_cmd = phy_data_ask();
+			if (ext_cmd == 0xFF)
+			{
+				// short TX command, fetch the length
+				uint16_t replay_len = phy_data_ask() << 8;
+				replay_len += phy_data_ask();
+				return replay_len;
+			}
+			else
+			{
+				// not a known extended message, debug and abort
+				debug_dual(DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE, 0x01);
+				debug(0x03);
+				debug(phy_data_ask());
+				debug(phy_data_ask());
+			}
+		}
+		else
+		{
+			// not a known extended message, debug and abort
+			uint16_t ext_real_len = ext_len;
+			if (ext_len == 0) ext_real_len = 256;
+			debug_dual(DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE, message);
+			debug(ext_len);
+			for (uint16_t i = 0; i < ext_real_len; i++)
+			{
+				debug(phy_data_ask());
+			}
+		}
+
+		/*
+		 * We go unexpectedly bus free if we didn't get the one supported
+		 * extended message format.
+		 */
+		phy_phase(PHY_PHASE_BUS_FREE);
+		return 0;
+	}
+	else
+	{
+		// message is not supported, just go bus free unexpectedly
+		debug_dual(DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE, message);
+		phy_phase(PHY_PHASE_BUS_FREE);
+		return 0;
+	}
+}
+
 /*
  * ============================================================================
  * 
@@ -414,18 +482,39 @@ void link_main(void)
 		logic_message_out();
 
 		/*
-		 * Then we loop as long as we have packets to send and we haven't
-		 * been disconnected from the initiator. Once done, we clear our
-		 * reselection flag and then disconnect ourselves.
+		 * Then we loop, sending packets to the initiator. This will continue
+		 * as long as we have packets to send (or transmit), until we get
+		 * disconnected. Once done, we clear our reselection flag and then
+		 * disconnect ourselves.
 		 */
-		while (phy_is_active() && (ENC_PORT.IN & ENC_PIN_INT))
+		uint16_t txreq = 0;
+		while (phy_is_active() && ((ENC_PORT.IN & ENC_PIN_INT) || txreq))
 		{
-			debug(DEBUG_LINK_RX_PACKET_START);
-			//_delay_us(150);
-			link_read_packet();
-			debug(DEBUG_LINK_RX_PACKET_DONE);
-			//_delay_us(100);
-			logic_message_out();
+			if (txreq)
+			{
+				// initiator wants to send a packet
+				debug(DEBUG_LINK_SHORT_TX_START);
+				link_send_packet(txreq);
+
+				/*
+				 * I've not been able to catch this behavior on the real
+				 * device. The driver appears to dislike us doing anything
+				 * but disconnecting at this point.
+				 */
+				logic_message_in(LOGIC_MSG_DISCONNECT);
+				phy_phase(PHY_PHASE_BUS_FREE);
+				debug(DEBUG_LINK_SHORT_TX_DONE);
+			}
+			else
+			{
+				// nothing to transmit, just send the pending packet
+				debug(DEBUG_LINK_RX_PACKET_START);
+				//_delay_us(150);
+				link_read_packet();
+				debug(DEBUG_LINK_RX_PACKET_DONE);
+				//_delay_us(100);
+				txreq = link_message_out_post_rx();
+			}
 		}
 		asked_for_reselection = 0;
 		if (phy_is_active())
@@ -456,7 +545,7 @@ void link_main(void)
 				logic_request_sense(cmd);
 				break;
 			case 0x05: // "Send Packet"
-				link_send_packet(cmd);
+				link_send_packet_cmd(cmd);
 				break;
 			case 0x06: // "Change MAC"
 				link_change_mac(cmd);
