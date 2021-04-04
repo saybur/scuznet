@@ -1,6 +1,9 @@
 scuznet
 =======
 
+<<< THIS IS A FORKED VERSION OF SCUZNET SUPPORTING DAYNALINK EMULATION >>>
+<<< SEE SCUZNET-DAYNAPORT README >>>
+
 Open source hardware emulating a Nuvolink SCSI to Ethernet adapter, for use
 with vintage Macintosh computers.
 
