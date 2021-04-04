@@ -129,15 +129,15 @@
  * Duration in cycles after /BSY goes up that arbitration start should occur.
  * This should be approximately 800ns and 2400ns respectively.
  */
-#define PHY_TIMER_BSY_CCA_VAL   26
-#define PHY_TIMER_BSY_CCB_VAL   76
+#define PHY_TIMER_BSY_CCA_VAL 26
+#define PHY_TIMER_BSY_CCB_VAL 76
 
 /*
  * The frequency of checks during reselection to see if the initiator has
  * set /BSY and is ready to proceed. A value of 1024 equates to a check about
  * every 32us @ 32MHz.
  */
-#define PHY_TIMER_RESEL_VAL     1024
+#define PHY_TIMER_RESEL_VAL 1024
 
 /*
  * Lookup values needed to swap a reversed port order back to normal, or take
@@ -390,15 +390,6 @@ void phy_init(uint8_t mask)
 	PHY_CFG_R_SEL |= PORT_ISC_RISING_gc;
 	PHY_PORT_CTRL_IN.INT0MASK = PHY_PIN_R_SEL;
 	PHY_PORT_CTRL_IN.INT1MASK = PHY_PIN_R_BSY;
-
-	/*
-	 * Setup timer that monitors the time elapsed since a DISCONNECT message
-	 * was received from the initiator. This will run continuously during
-	 * operation and be reset (along with the OVF flag) when DISCONNECT
-	 * occurs.
-	 */
-	PHY_TIMER_DISCON.PER = PHY_TIMER_DISCON_DELAY;
-	PHY_TIMER_DISCON.CTRLA = TC_CLKSEL_DIV64_gc;
 }
 
 void phy_init_hold(void)
@@ -434,8 +425,12 @@ void phy_data_offer(uint8_t data)
 
 	while (phy_is_ack_asserted());
 	phy_data_set(data);
+	//_delay_us(0.1);
+	
 	req_assert();
+	 // Additional Settle delay
 	while (! phy_is_ack_asserted());
+	//_delay_us(0.05);
 	req_release();
 }
 
@@ -466,9 +461,10 @@ void phy_data_offer_stream(USART_t* usart, uint16_t len)
 		usart->DATA = 0xFF;
 		while (! (usart->STATUS & USART_RXCIF_bm));
 		v = usart->DATA;
-
+		//jgk_debug(v);
 		while (phy_is_ack_asserted());
 		phy_data_set(v);
+		//_delay_us(0.05); // JGK Test
 		req_assert();
 		while (! phy_is_ack_asserted());
 		req_release();
@@ -667,7 +663,7 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 		req_assert();
 		// wait for initiator to give us the data
 		while (! (phy_is_ack_asserted()));
-
+		_delay_us(0.05); // JGK DELAY REQUIRED  If this delay isn't here, the device seems to get caught up in a handshake loop.
 		// read data from the bus
 		v = phy_data_get();
 
@@ -682,8 +678,95 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 		// write to the USART once it is ready
 		while (! (usart->STATUS & USART_DREIF_bm));
 		usart->DATA = v;
+		//jgk_debug(v);
 	}
 }
+
+void phy_data_ask_stream_0x80(USART_t* usart, uint16_t len) //uint16_t 
+{
+	uint8_t v;
+
+	// guard against calling when not in control
+	// note that ISR has the opposite guard
+	if (! phy_is_active()) return;
+
+	for (uint16_t i = 0; i < len; i++)
+	{
+		// verify the initiator has released /ACK
+		while (phy_is_ack_asserted());
+		// ask for a byte of data
+		req_assert();
+		// wait for initiator to give us the data
+		while (! (phy_is_ack_asserted()));
+		_delay_us(0.05); // JGK DELAY REQUIRED  If this delay isn't here, the device seems to get caught up in a handshake loop.
+		// read data from the bus
+		v = phy_data_get();
+
+		// let the initiator know we got the information
+		req_release();
+
+		// get the true data value, if needed
+		#ifdef PHY_PORT_DATA_IN_REVERSED
+		v = phy_reverse_table[v];
+		#endif
+
+		// write to the USART once it is ready
+		if ((i>=4) && (i<(len - 4)))
+		{
+			while (! (usart->STATUS & USART_DREIF_bm));
+			usart->DATA = v;
+		}
+		//jgk_debug(v);
+
+	}
+}
+
+
+/*
+
+void phy_data_ask_stream_0x80_tobuffer(uint8_t* xmit_buf, uint16_t len) //Was previously writing to a buffer as it seemed the direct UART stuff was causing a timing issue, especially if there were debugging prints included.  Have now switched to direct to UART write.
+{
+	uint8_t v;
+
+	// guard against calling when not in control
+	// note that ISR has the opposite guard
+	if (! phy_is_active()) return;
+	//jgk_debug('#');
+	
+	while (phy_is_ack_asserted());
+	for (uint16_t i = 0; i < len; i++)
+	{
+		// if (! (phy_is_ack_asserted()))
+		//jgk_debug('$');
+		
+		req_assert();
+		//jgk_debug('%');
+		while (! (phy_is_ack_asserted()));
+		_delay_us(0.05); // JGK DELAY REQUIRED
+		
+		v = phy_data_get();
+		//_delay_us(0.05);
+		req_release();
+		while (phy_is_ack_asserted());	
+		// get the true data value, if needed
+		#ifdef PHY_PORT_DATA_IN_REVERSED
+		v = phy_reverse_table[v];
+		#endif
+		//jgk_debug(v);
+
+		xmit_buf[i] = v;
+		
+		
+	}
+	//for (uint16_t i = 0; i < len; i++)
+	//{
+	//jgk_debug(xmit_buf[i]);
+	//}
+	//jgk_debug('#');
+	//return i;
+}
+*/
+
 
 void phy_data_ask_stream_block(USART_t* usart)
 {
@@ -982,11 +1065,12 @@ ISR(PHY_TIMER_BSY_CCB_vect)
  * Called frequently during attempted reselection to see if the initiator has
  * responded to reselection.
  */
+ /*
 ISR(PHY_TIMER_RESEL_vect)
 {
 	if (phy_is_bsy_asserted())
 	{
-		/*
+		
 		 * Reselection has been successful. Match the current phase to the
 		 * lines asserted and return to normal bus transactions with us
 		 * active on the system. We also reconfigure the /BSY interrupt
@@ -994,7 +1078,7 @@ ISR(PHY_TIMER_RESEL_vect)
 		 * 
 		 * This disables any active request for reselection (since we're
 		 * doing that now) by hard-setting the status register.
-		 */
+		
 		bsy_assert();
 		sel_release();
 		phy_data_clear();
@@ -1014,7 +1098,7 @@ ISR(PHY_TIMER_RESEL_vect)
 		debug(DEBUG_PHY_RESELECT_FINISHED);
 	}
 }
-
+*/
 /*
  * Handles /SEL becoming asserted during ARBITRATION.
  * 

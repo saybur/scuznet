@@ -275,6 +275,7 @@ void logic_status(uint8_t);
  */
 uint8_t logic_data_out(uint8_t*, uint8_t);
 
+
 /*
  * Version of the above that consigns data from the initiator to oblivion.
  * Useful for when we want to ignore dumb instructions. Provide with the number

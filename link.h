@@ -58,7 +58,7 @@
  * that this device will obey. This function should only be called once at
  * startup.
  */
-void link_init(uint8_t*, uint8_t);
+void link_init(uint8_t);
 
 /*
  * Checks the network device for pending packets.
@@ -81,6 +81,8 @@ void link_check_rx(void);
  * through the bus phases as needed.
  */
 void link_main(void);
+void link_set_filter(void);
+
 
 #endif /* ENC_ENABLED */
 

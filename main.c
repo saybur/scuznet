@@ -35,32 +35,41 @@ static uint8_t link_mask;
 
 static void main_handle(void)
 {
+	
 	if (phy_is_active())
 	{
 		led_on();
+		
+		
 		uint8_t target = phy_get_target();
+		
 		if (target == hdd_mask)
 		{
 			#ifdef HDD_ENABLED
+				
 				hdd_main();
 			#endif
 		}
 		else if (target == link_mask)
 		{
 			#ifdef ENC_ENABLED
+				
+				
 				link_main();
+			
 			#endif
 		}
 		else
 		{
 			debug_dual(DEBUG_MAIN_ACTIVE_NO_TARGET, phy_get_target());
+			
 			logic_done();
 		}
 		led_off();
 	}
 
 	#ifdef ENC_ENABLED
-		link_check_rx();
+		//link_check_rx();
 	#endif
 }
 
@@ -121,8 +130,11 @@ int main(void)
 	// setup additional elements dependent on configuration
 	phy_init(hdd_mask | link_mask);
 	#ifdef ENC_ENABLED
+		
 		net_setup(device_config + CONFIG_OFFSET_MAC);
-		link_init(device_config + CONFIG_OFFSET_MAC, link_mask);
+		link_init(link_mask);
+		link_set_filter();
+		
 	#endif
 	phy_init_hold();
 

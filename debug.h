@@ -37,10 +37,9 @@
 #define DEBUG_MEM_CMD_REJECTED                    0x21
 #define DEBUG_MEM_BAD_DATA_TOKEN                  0x22
 #define DEBUG_LOGIC_BAD_LUN                       0x50
+#define DEBUG_LOGIC_EXTENDED_MESSAGE              0x51
 #define DEBUG_LOGIC_BAD_CMD                       0x52
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
-#define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E
-#define DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE          0x5D
 #define DEBUG_LOGIC_MESSAGE                       0x5F
 #define DEBUG_HDD_MODE_SENSE                      0x7B
 #define DEBUG_HDD_MODE_SELECT                     0x7C
@@ -63,8 +62,6 @@
 #define DEBUG_HDD_MEM_BAD_HEADER                  0x93
 #define DEBUG_HDD_MEM_CARD_BUSY                   0x94
 #define DEBUG_LINK_TX_REQUESTED                   0xA0
-#define DEBUG_LINK_SHORT_TX_START                 0xA4
-#define DEBUG_LINK_SHORT_TX_DONE                  0xA5
 #define DEBUG_LINK_INQUIRY                        0xA8
 #define DEBUG_LINK_RX_ASKING_RESEL                0xB0
 #define DEBUG_LINK_RX_SKIP                        0xB1
@@ -123,3 +120,11 @@ static inline __attribute__((always_inline)) void debug(
 #endif
 
 #endif /* DEBUG_H */
+static inline __attribute__((always_inline)) void jgk_debug(uint8_t v)
+{
+	if (0)
+	{
+		while (! (DEBUG_USART.STATUS & USART_DREIF_bm));
+		DEBUG_USART.DATA = v;
+	}
+}

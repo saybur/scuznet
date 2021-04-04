@@ -22,6 +22,8 @@
 #include "enc.h"
 #include "net.h"
 
+uint8_t mac_address[6];
+
 #ifdef ENC_ENABLED
 
 /*
@@ -67,8 +69,7 @@ void net_setup(uint8_t* mac)
 	 * Only allow packets through that have a valid CRC and are directed at
 	 * our MAC, at least for now.
 	 */
-	enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-			| ENC_CRCEN_bm);
+	enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm| ENC_CRCEN_bm);
 
 	/*
 	 * 6.4: wait for oscillator startup.
@@ -98,13 +99,21 @@ void net_setup(uint8_t* mac)
 	enc_cmd_write(ENC_MAIPGL, 0x12);
 	enc_cmd_write(ENC_MAIPGH, 0x0C);
 	// assign initial MAC address to what the configuration specifies
-	enc_cmd_write(ENC_MAADR1, mac[0]);
+	enc_cmd_write(ENC_MAADR1, mac[0]); 
 	enc_cmd_write(ENC_MAADR2, mac[1]);
 	enc_cmd_write(ENC_MAADR3, mac[2]);
 	enc_cmd_write(ENC_MAADR4, mac[3]);
 	enc_cmd_write(ENC_MAADR5, mac[4]);
 	enc_cmd_write(ENC_MAADR6, mac[5]);
 
+	// Load MAC Address to global variable so available when Daynaport calls it
+
+	mac_address[0] = mac[0];
+	mac_address[1] = mac[1];
+	mac_address[2] = mac[2];
+	mac_address[3] = mac[3];
+	mac_address[4] = mac[4];
+	mac_address[5] = mac[5];
 	/*
 	 * 6.6: configure the PHY correctly.
 	 * 
@@ -190,6 +199,8 @@ void net_transmit(uint8_t buffer, uint16_t length)
 
 	// set ECON1.TXRTS, which starts transmission
 	enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
+
+
 }
 
 #endif /* ENC_ENABLED */

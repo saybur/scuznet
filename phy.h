@@ -281,4 +281,9 @@ void phy_phase(uint8_t);
  */
 uint8_t phy_reselect(uint8_t);
 
+// writes a single char to the uart for transmitting a packet (more complex 0x80 scenario
+
+
+void phy_data_ask_stream_0x80(USART_t* usart, uint16_t len);
+void phy_data_ask_stream_0x80_tobuffer(uint8_t* xmit_buf, uint16_t len);
 #endif /* PHY_H */
