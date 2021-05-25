@@ -25,6 +25,17 @@
 /*
  * ============================================================================
  *  
+ *   ******* VERY IMPORTANT WARNING *******
+ * 
+ * ============================================================================
+ * 
+ * This version of the hardware is not fully tested and should only be used if
+ * you are willing to help work out the (possibly board-damaging) bugs.
+ */
+
+/*
+ * ============================================================================
+ *  
  *   PIN AND PER-HARDWARE PERIPHERAL ASSIGNMENTS
  * 
  * ============================================================================
@@ -66,8 +77,8 @@
 #define DEBUG_USART             USARTE0
 #define DEBUG_PORT              PORTE
 #define DEBUG_PIN_TX            PIN3_bm
-#define LED_PORT                VPORT3
-#define LED_PIN                 PIN7_bm
+#define LED_PORT                PORTE
+#define LED_PIN                 PIN1_bm
 
 /*
  * ****************************************************************************
@@ -76,14 +87,14 @@
  * 
  * ****************************************************************************
  */
-#define ENC_USART               USARTF0
+#define ENC_USART               USARTE1
 #define ENC_USART_BAUDCTRL      0
-#define ENC_PORT                PORTF
-#define ENC_PIN_CS              PIN0_bm
-#define ENC_PIN_XCK             PIN1_bm
-#define ENC_PIN_RX              PIN2_bm
-#define ENC_PIN_TX              PIN3_bm
-#define ENC_RX_PINCTRL          PORTF.PIN2CTRL
+#define ENC_PORT                PORTE
+#define ENC_PIN_CS              PIN4_bm
+#define ENC_PIN_XCK             PIN5_bm
+#define ENC_PIN_RX              PIN6_bm
+#define ENC_PIN_TX              PIN7_bm
+#define ENC_RX_PINCTRL          PORTE.PIN6CTRL
 
 #define ENC_PORT_EXT            PORTF
 #define ENC_PIN_RST             PIN4_bm
@@ -97,13 +108,13 @@
  * 
  * ****************************************************************************
  */
-#define MEM_USART               USARTE1
-#define MEM_PORT                PORTE
-#define MEM_PIN_CS              PIN4_bm
-#define MEM_PIN_XCK             PIN5_bm
-#define MEM_PIN_RX              PIN6_bm
-#define MEM_PIN_TX              PIN7_bm
-#define MEM_PINCTRL_RX          PORTE.PIN6CTRL
+#define MEM_USART               USARTF0
+#define MEM_PORT                PORTF
+#define MEM_PIN_CS              PIN0_bm
+#define MEM_PIN_XCK             PIN1_bm
+#define MEM_PIN_RX              PIN2_bm
+#define MEM_PIN_TX              PIN3_bm
+#define MEM_PINCTRL_RX          PORTF.PIN2CTRL
 
 /*
  * ****************************************************************************
@@ -118,9 +129,7 @@
  */
 #define PHY_PORT_DATA_IN_REVERSED
 #define PHY_PORT_DATA_IN_INVERT
-#define PHY_PORT_DATA_IN_CLOCK
 #define PHY_PORT_DATA_IN_OE
-#define PHY_PORT_DATA_IN_ACKEN
 
 /*
  * Pin and port assignments. These end up scattered across a bunch of ports
@@ -144,7 +153,7 @@
 #define PHY_PORT_R_ATN          VPORT2
 #define PHY_PORT_R_ACK          VPORT3
 #define PHY_PORT_R_DBP          VPORT2
-#define PHY_PORT_T_BSY          VPORT3
+#define PHY_PORT_T_BSY          VPORT2
 #define PHY_PORT_T_SEL          VPORT2
 #define PHY_PORT_T_MSG          VPORT3
 #define PHY_PORT_T_CD           VPORT3
@@ -152,27 +161,23 @@
 #define PHY_PORT_T_REQ          VPORT3
 #define PHY_PORT_T_DBP          VPORT2
 #define PHY_PORT_DOE            VPORT1
-#define PHY_PORT_DCLK           VPORT3
-#define PHY_PORT_ACKEN          VPORT2
 #define PHY_PIN_R_RST           PIN6_bm
 #define PHY_PIN_R_BSY           PIN4_bm
 #define PHY_PIN_R_SEL           PIN3_bm
 #define PHY_PIN_R_ATN           PIN5_bm
-#define PHY_PIN_R_ACK           PIN2_bm
-#define PHY_PIN_R_ACK_BP        PIN2_bp
+#define PHY_PIN_R_ACK           PIN0_bm
+#define PHY_PIN_R_ACK_BP        PIN0_bp
 #define PHY_PIN_R_DBP           PIN2_bm
-#define PHY_PIN_T_BSY           PIN0_bm
+#define PHY_PIN_T_BSY           PIN7_bm
 #define PHY_PIN_T_SEL           PIN1_bm
-#define PHY_PIN_T_MSG           PIN5_bm
-#define PHY_PIN_T_CD            PIN3_bm
-#define PHY_PIN_T_IO            PIN4_bm
-#define PHY_PIN_T_REQ           PIN6_bm
-#define PHY_PIN_T_REQ_BP        PIN6_bp
+#define PHY_PIN_T_MSG           PIN3_bm
+#define PHY_PIN_T_CD            PIN1_bm
+#define PHY_PIN_T_IO            PIN2_bm
+#define PHY_PIN_T_REQ           PIN4_bm
+#define PHY_PIN_T_REQ_BP        PIN4_bp
 #define PHY_PIN_T_DBP           PIN0_bm
 #define PHY_PIN_T_DBP_BP        PIN0_bp
 #define PHY_PIN_DOE             PIN0_bm
-#define PHY_PIN_DCLK            PIN1_bm
-#define PHY_PIN_ACKEN           PIN7_bm
 // a few need pin configs as well
 #define PHY_CFG_R_SEL           PORTC.PIN1CTRL
 #define PHY_CFG_R_BSY           PORTC.PIN4CTRL

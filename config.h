@@ -23,6 +23,8 @@
 #include <avr/io.h>
 #if defined(HW_V01)
 	#include "hw_v01.h"
+#elif defined(HW_V02)
+	#include "hw_v02.h"
 #elif defined(HW_DRV_V01)
 	#include "hw_drv_v01.h"
 #else

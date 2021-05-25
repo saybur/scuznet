@@ -443,7 +443,7 @@ void link_check_rx(void)
 		return;
 	}
 
-	if (ENC_PORT.IN & ENC_PIN_INT)
+	if (ENC_PORT_EXT.IN & ENC_PIN_INT)
 	{
 		if (last_identify & 0x40)
 		{
@@ -488,7 +488,7 @@ void link_main(void)
 		 * disconnect ourselves.
 		 */
 		uint16_t txreq = 0;
-		while (phy_is_active() && ((ENC_PORT.IN & ENC_PIN_INT) || txreq))
+		while (phy_is_active() && ((ENC_PORT_EXT.IN & ENC_PIN_INT) || txreq))
 		{
 			if (txreq)
 			{

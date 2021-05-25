@@ -1,8 +1,17 @@
+# ============================================================================
+#  Edit the following lines to match the hardware revision, CPU type, and
+#  the programmer being used.
+# ============================================================================
+
+OPTIONS := -DHW_VXXX -DDEBUGGING
 PROGRAMMER := avrispv2
 MCU := atxmega64a3u
-F_CPU := 32000000
-OPTIONS := -DHW_V01 -DDEBUGGING
 
+# ============================================================================
+#  Use caution editing the following values.
+# ============================================================================
+
+F_CPU := 32000000
 WARNINGS := -Wall -Wextra -pedantic
 CC := avr-gcc
 CFLAGS ?= -std=c99 $(WARNINGS) -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(OPTIONS)

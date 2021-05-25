@@ -117,8 +117,10 @@ void enc_init(void)
 	 * reset lines. All should be high except clock, per 4.1.
 	 */
 	ENC_PORT.OUTCLR = ENC_PIN_XCK;
-	ENC_PORT.OUTSET = ENC_PIN_TX | ENC_PIN_CS | ENC_PIN_RST;
-	ENC_PORT.DIRSET = ENC_PIN_XCK | ENC_PIN_TX | ENC_PIN_CS | ENC_PIN_RST;
+	ENC_PORT.OUTSET = ENC_PIN_TX | ENC_PIN_CS;
+	ENC_PORT_EXT.OUTSET = ENC_PIN_RST;
+	ENC_PORT.DIRSET = ENC_PIN_XCK | ENC_PIN_TX | ENC_PIN_CS;
+	ENC_PORT_EXT.DIRSET = ENC_PIN_RST;
 	/*
 	 * Hardware does not have a pull-up on RX, unfortunately. This pin is
 	 * supposed to be driven by the ENC, but will be tri-stated during some
@@ -130,17 +132,17 @@ void enc_init(void)
 	 * Invert the read state of the /INT pin to make the logic that checks it
 	 * a little simpler to implement. To manually check, perform the following:
 	 * 
-	 * if (ENC_PORT.IN & ENC_PIN_INT) { };
+	 * if (ENC_PORT_EXT.IN & ENC_PIN_INT) { };
 	 */
 	ENC_INT_PINCTRL |= PORT_INVEN_bm;
 
 	// wait before we do anything with the reset line
 	_delay_ms(1);
 	// drive the /RESET line low for 50us (min 400ns)
-	ENC_PORT.OUTCLR = ENC_PIN_RST;
+	ENC_PORT_EXT.OUTCLR = ENC_PIN_RST;
 	_delay_us(50);
 	// then raise it, and wait again (min ~50us per 11.2)
-	ENC_PORT.OUTSET = ENC_PIN_RST;
+	ENC_PORT_EXT.OUTSET = ENC_PIN_RST;
 	_delay_ms(1);
 
 	// setup speed
