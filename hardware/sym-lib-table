@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name scuznet)(type Legacy)(uri ${KIPRJMOD}/scuznet.lib)(options "")(descr ""))
+)
