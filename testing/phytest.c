@@ -17,6 +17,7 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <avr/cpufunc.h>
 #include <util/delay.h>
 #include "led.h"
 #include "phytest.h"
@@ -34,7 +35,7 @@
 	#define dclk_fall()       PHY_PORT_DCLK.OUT  &= ~PHY_PIN_DCLK
 #else
 	#define dclk_rise()
-	#define dclk_fall()
+	#define dclk_fall()       _NOP()
 #endif
 
 /*
