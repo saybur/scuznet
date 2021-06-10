@@ -2,21 +2,17 @@ scuznet hardware
 ================
 
 Provided here solely for informational purposes is a prototype hardware design
-that was built for testing the scuznet firmware. It is not well tested and has
-the following known issues, and likely many other unknown ones:
+that was built for testing the scuznet firmware. This is the second revision
+of the hardware, which has the following known issues.
 
-* There is no USB support, though it would be very nice to have. As it stands,
-  any programming must be done via the PDI interface.
-* The footprints on the 0603 SMD capacitors and the ferrite are a little small,
-  and could stand to be increased in size for my shaky hands.
-* The power connector footprint is too large, and wiggles around while
+* A USB connection is provided but there is (as yet) no hardware support for
+  it. I must have lost my mind when selecting this part, it is a PITA to
+  solder. Version 2.1 of the board should replace this with something easier
+  to work with.
+* The power connector footprint is still too big and wiggles around while
   soldering.
-* The Ethernet and power connectors are too close to the edge of the DB25
-  connector, but have some space to move out without interfering with the case.
-* The '574 is unnecessary and a result of a bad design choice on my part. It
-  could be replaced with a '245.
-* It would be nice to re-arrange the PHY RX lines so no reordering is
-  necessary.
+
+This version has not received significant testing yet.
 
 # License
 
