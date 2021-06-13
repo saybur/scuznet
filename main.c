@@ -19,6 +19,7 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
+#include "lib/pff/diskio.h"
 #include "config.h"
 #include "debug.h"
 #include "enc.h"
@@ -26,12 +27,12 @@
 #include "hdd.h"
 #include "link.h"
 #include "logic.h"
-#include "mem.h"
 #include "net.h"
 #include "phy.h"
 
 static uint8_t hdd_mask;
 static uint8_t link_mask;
+static FATFS fs;
 
 static void main_handle(void)
 {
@@ -66,7 +67,7 @@ int main(void)
 	init_debug();
 	led_on();
 	enc_init();
-	mem_init();
+	init_mem();
 	init_isr();
 
 	// fail here if there was a brown-out, so we can easily tell if the
@@ -105,31 +106,42 @@ int main(void)
 	link_init(device_config + CONFIG_OFFSET_MAC, link_mask);
 	phy_init_hold();
 
-	// initialize the memory card
-	uint8_t v;
-	do
+	// setup virtual hard drives (TEST CODE)
+	uint8_t res = pf_mount(&fs);
+	if (res)
 	{
-		v = mem_init_card();
-		main_handle();
-	}
-	while (v < 0x80);
-	debug_dual(DEBUG_MAIN_MEM_INIT_FOLLOWS, v);
-
-	// get the card size and mark it as OK if possible
-	if (v == 0xFF)
-	{
-		uint8_t csd[16];
-		if (mem_read_csd(csd))
+		while (1)
 		{
-			uint32_t size = mem_size(csd);
-			hdd_set_ready(size);
-		}
-		else
-		{
-			debug(DEBUG_MAIN_BAD_CSD_REQUEST);
+			led_on();
+			_delay_ms(1000);
+			led_off();
+			_delay_ms(1000);
 		}
 	}
-
+	res = pf_open("0.IMG");
+	if (res)
+	{
+		led_off();
+		_delay_ms(1000);
+		for (uint8_t i = 0; i < res; i++)
+		{
+			led_on();
+			_delay_ms(250);
+			led_off();
+			_delay_ms(250);
+		}
+		_delay_ms(3000);
+		
+		while (1)
+		{
+			led_on();
+			_delay_ms(250);
+			led_off();
+			_delay_ms(250);
+		}
+	}
+	hdd_set_ready(1024000); // 500MB in 512 byte sectors
+	
 	led_off();
 
 	// and continue main handler function

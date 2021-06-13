@@ -67,7 +67,7 @@ typedef struct LogicData_t {
  */
 typedef struct LogicDataOp_t {
 	uint8_t invalid;
-	uint8_t lba[4];
+	uint32_t lba;
 	uint16_t length;
 } LogicDataOp;
 

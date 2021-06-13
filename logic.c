@@ -135,10 +135,10 @@ void logic_parse_data_op(uint8_t* cmd)
 		}
 		else
 		{
-			logic_data.lba[0] = cmd[2];
-			logic_data.lba[1] = cmd[3];
-			logic_data.lba[2] = cmd[4];
-			logic_data.lba[3] = cmd[5];
+			logic_data.lba = ((uint32_t) cmd[2] << 24)
+					| ((uint32_t) cmd[3] << 16)
+					| ((uint32_t) cmd[4] << 8)
+					| (uint32_t) cmd[5];
 			logic_data.length = (cmd[7] << 8)
 					+ cmd[8];
 			logic_data.invalid = 0;
@@ -146,10 +146,9 @@ void logic_parse_data_op(uint8_t* cmd)
 	}
 	else if (cmd[0] == 0x08 || cmd[0] == 0x0A)
 	{
-		logic_data.lba[0] = 0x00;
-		logic_data.lba[1] = cmd[1] & 0x1F;
-		logic_data.lba[2] = cmd[2];
-		logic_data.lba[3] = cmd[3];
+		logic_data.lba = ((uint32_t) (cmd[1] & 0x1F) << 16)
+				| ((uint32_t) cmd[2] << 8)
+				| (uint32_t) cmd[3];
 		if (cmd[4] == 0)
 		{
 			logic_data.length = 256;

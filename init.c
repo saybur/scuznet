@@ -93,6 +93,14 @@ void init_isr(void)
 	sei();
 }
 
+void init_mem(void)
+{
+	MEM_PORT.OUTCLR = MEM_PIN_XCK;
+	MEM_PORT.OUTSET = MEM_PIN_TX | MEM_PIN_CS;
+	MEM_PORT.DIRSET = MEM_PIN_XCK | MEM_PIN_TX | MEM_PIN_CS;
+	MEM_PINCTRL_RX |= PORT_OPC_PULLUP_gc;
+}
+
 void mcu_reset(void)
 {
 	__asm__ __volatile__(

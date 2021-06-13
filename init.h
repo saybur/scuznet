@@ -52,6 +52,11 @@ void init_debug(void);
 void init_isr(void);
 
 /*
+ * Sets up the memory card interface pins.
+ */
+void init_mem(void);
+
+/*
  * Executes an MCU reset via the protected registers. This also disables
  * interrupts as part of the operation.
  */
