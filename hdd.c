@@ -25,8 +25,6 @@
 #include "mem.h"
 #include "hdd.h"
 
-#ifdef HDD_ENABLED
-
 /*
  * Defines the standard response we provide when asked to give INQUIRY data.
  */
@@ -1030,5 +1028,3 @@ void hdd_main(void)
 	}
 	logic_done();
 }
-
-#endif /* HDD_ENABLED */

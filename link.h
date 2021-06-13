@@ -22,8 +22,6 @@
 
 #include <avr/io.h>
 
-#ifdef ENC_ENABLED
-
 /*
  * Nuvolink emulator using the ENC28J60 and associated peripherals to support
  * network connections.
@@ -81,7 +79,5 @@ void link_check_rx(void);
  * through the bus phases as needed.
  */
 void link_main(void);
-
-#endif /* ENC_ENABLED */
 
 #endif /* LINK_H */

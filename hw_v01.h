@@ -36,12 +36,6 @@
  */
 
 /*
- * Set the features that should be compiled into the firmware.
- */
-#define HDD_ENABLED
-#define ENC_ENABLED
-
-/*
  * ****************************************************************************
  * 
  *   VIRTUAL PORT ASSIGNMENTS

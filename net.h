@@ -22,8 +22,6 @@
 
 #include <avr/io.h>
 
-#ifdef ENC_ENABLED
-
 /*
  * Helper functions for manipulating the Ethernet device. This abstract out
  * some of the more common operations, though calling the functions in enc.c
@@ -132,7 +130,5 @@ void net_move_txpt(uint8_t);
  * packet.
  */
 void net_transmit(uint8_t, uint16_t);
-
-#endif /* ENC_ENABLED */
 
 #endif /* NET_H */

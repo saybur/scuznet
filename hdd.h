@@ -22,8 +22,6 @@
 
 #include <avr/io.h>
 
-#ifdef HDD_ENABLED
-
 /*
  * Simplistic hard drive emulator using a memory card as the data backend.
  * 
@@ -72,7 +70,5 @@ uint8_t hdd_has_error(void);
  * will proceed through the bus phases as needed.
  */
 void hdd_main(void);
-
-#endif /* HDD_ENABLED */
 
 #endif /* HDD_H */

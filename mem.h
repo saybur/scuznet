@@ -22,8 +22,6 @@
 
 #include <avr/io.h>
 
-#ifdef HDD_ENABLED
-
 /*
  * Abstraction layer over memory card operations.
  * 
@@ -213,7 +211,5 @@ uint8_t mem_read_cid(uint8_t*);
  * This is not well tested for some cards: refer to the definition for details.
  */
 uint32_t mem_size(uint8_t*);
-
-#endif /* HDD_ENABLED */
 
 #endif /* MEM_H */

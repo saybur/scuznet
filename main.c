@@ -41,15 +41,11 @@ static void main_handle(void)
 		uint8_t target = phy_get_target();
 		if (target == hdd_mask)
 		{
-			#ifdef HDD_ENABLED
-				hdd_main();
-			#endif
+			hdd_main();
 		}
 		else if (target == link_mask)
 		{
-			#ifdef ENC_ENABLED
-				link_main();
-			#endif
+			link_main();
 		}
 		else
 		{
@@ -59,9 +55,7 @@ static void main_handle(void)
 		led_off();
 	}
 
-	#ifdef ENC_ENABLED
-		link_check_rx();
-	#endif
+	link_check_rx();
 }
 
 int main(void)
@@ -71,12 +65,8 @@ int main(void)
 	init_clock();
 	init_debug();
 	led_on();
-	#ifdef ENC_ENABLED
-		enc_init();
-	#endif
-	#ifdef HDD_ENABLED
-		mem_init();
-	#endif
+	enc_init();
+	mem_init();
 	init_isr();
 
 	// fail here if there was a brown-out, so we can easily tell if the
@@ -98,16 +88,8 @@ int main(void)
 	uint8_t device_config[CONFIG_EEPROM_LENGTH];
 	config_read(device_config);
 	GLOBAL_CONFIG_REGISTER = device_config[CONFIG_OFFSET_FLAGS];
-	#ifdef HDD_ENABLED
-		hdd_mask = 1 << device_config[CONFIG_OFFSET_ID_HDD];
-	#else
-		hdd_mask = 0;
-	#endif
-	#ifdef ENC_ENABLED
-		link_mask = 1 << device_config[CONFIG_OFFSET_ID_LINK];
-	#else
-		link_mask = 0;
-	#endif
+	hdd_mask = 1 << device_config[CONFIG_OFFSET_ID_HDD];
+	link_mask = 1 << device_config[CONFIG_OFFSET_ID_LINK];
 
 	// print the configuration out if requested
 	#ifdef DEBUGGING
@@ -118,40 +100,36 @@ int main(void)
 	}
 	#endif
 
-	// setup additional elements dependent on configuration
 	phy_init(hdd_mask | link_mask);
-	#ifdef ENC_ENABLED
-		net_setup(device_config + CONFIG_OFFSET_MAC);
-		link_init(device_config + CONFIG_OFFSET_MAC, link_mask);
-	#endif
+	net_setup(device_config + CONFIG_OFFSET_MAC);
+	link_init(device_config + CONFIG_OFFSET_MAC, link_mask);
 	phy_init_hold();
 
-	#ifdef HDD_ENABLED
-		// initialize the memory card
-		uint8_t v;
-		do
-		{
-			v = mem_init_card();
-			main_handle();
-		}
-		while (v < 0x80);
-		debug_dual(DEBUG_MAIN_MEM_INIT_FOLLOWS, v);
+	// initialize the memory card
+	uint8_t v;
+	do
+	{
+		v = mem_init_card();
+		main_handle();
+	}
+	while (v < 0x80);
+	debug_dual(DEBUG_MAIN_MEM_INIT_FOLLOWS, v);
 
-		// get the card size and mark it as OK if possible
-		if (v == 0xFF)
+	// get the card size and mark it as OK if possible
+	if (v == 0xFF)
+	{
+		uint8_t csd[16];
+		if (mem_read_csd(csd))
 		{
-			uint8_t csd[16];
-			if (mem_read_csd(csd))
-			{
-				uint32_t size = mem_size(csd);
-				hdd_set_ready(size);
-			}
-			else
-			{
-				debug(DEBUG_MAIN_BAD_CSD_REQUEST);
-			}
+			uint32_t size = mem_size(csd);
+			hdd_set_ready(size);
 		}
-	#endif
+		else
+		{
+			debug(DEBUG_MAIN_BAD_CSD_REQUEST);
+		}
+	}
+
 	led_off();
 
 	// and continue main handler function
