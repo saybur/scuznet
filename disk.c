@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 ChaN
+ * Copyright (C) 2014-2020 ChaN
  * Copyright (C) 2019-2021 saybur
  * 
  * This file is part of scuznet.
@@ -19,20 +19,23 @@
  */
 
 /*
- * Some of functions are derived from pfsample.zip, available here:
+ * Most of functions here are derived from pfsample.zip and ffsample.zip,
+ * available at the following links:
  * 
  * http://elm-chan.org/fsw/ff/00index_p.html
+ * http://elm-chan.org/fsw/ff/00index_e.html
  * 
  * The original license for these is:
  * 
- * > These sample projects for Petit FatFs module are free software and there is
- * > NO WARRANTY. You can use, modify and redistribute it for personal, non-profit
+ * > These sample projects for FatFs module are free software and there is NO
+ * > WARRANTY. You can use, modify and redistribute it for personal, non-profit
  * > or commercial use without any restriction UNDER YOUR RESPONSIBILITY.
  */
 
 #include <avr/io.h>
 #include <util/delay.h>
-#include "./lib/pff/diskio.h"
+#include "./lib/ff/ff.h"
+#include "./lib/ff/diskio.h"
 #include "config.h"
 
 #define cs_assert()         (MEM_PORT.OUTCLR = MEM_PIN_CS)
@@ -40,21 +43,40 @@
 #define is_cs_asserted()    (! (MEM_PORT.IN & MEM_PIN_CS))
 #define data_not_ready()    (! (MEM_USART.STATUS & USART_RXCIF_bm))
 
-#define CMD0                (0x40+0)  // GO_IDLE_STATE
-#define CMD1                (0x40+1)  // SEND_OP_COND (MMC)
-#define	ACMD41              (0xC0+41) // SEND_OP_COND (SDC)
-#define CMD8                (0x40+8)  // SEND_IF_COND
-#define CMD16               (0x40+16) // SET_BLOCKLEN
-#define CMD17               (0x40+17) // READ_SINGLE_BLOCK
-#define CMD24               (0x40+24) // WRITE_BLOCK
-#define CMD55               (0x40+55) // APP_CMD
-#define CMD58               (0x40+58) // READ_OCR
+#define mem_timed_out()	    (MEM_TIMER.INTFLAGS & TC0_OVFIF_bm)
 
-#define CT_MMC              0x01      // MMCv3
-#define CT_SD1	            0x02      // SDv1
-#define CT_SD2              0x04      // SDv2+
-#define CT_BLOCK            0x08      // block addressing
+#define CMD0                (0)	      // GO_IDLE_STATE
+#define CMD1                (1)       // SEND_OP_COND (MMC)
+#define	ACMD41              (0x80+41) // SEND_OP_COND (SDC)
+#define CMD8                (8)       // SEND_IF_COND
+#define CMD9                (9)       // SEND_CSD
+#define CMD10               (10)      // SEND_CID
+#define CMD12               (12)      // STOP_TRANSMISSION
+#define ACMD13              (0x80+13) // SD_STATUS (SDC)
+#define CMD16               (16)      // SET_BLOCKLEN
+#define CMD17               (17)      // READ_SINGLE_BLOCK
+#define CMD18               (18)      // READ_MULTIPLE_BLOCK
+#define CMD23               (23)      // SET_BLOCK_COUNT (MMC)
+#define	ACMD23              (0x80+23) // SET_WR_BLK_ERASE_COUNT (SDC)
+#define CMD24               (24)      // WRITE_BLOCK
+#define CMD25               (25)      // WRITE_MULTIPLE_BLOCK
+#define CMD32               (32)      // ERASE_ER_BLK_START
+#define CMD33               (33)      // ERASE_ER_BLK_END
+#define CMD38               (38)      // ERASE
+#define	CMD48               (48)      // READ_EXTR_SINGLE
+#define	CMD49               (49)      // WRITE_EXTR_SINGLE
+#define CMD55               (55)      // APP_CMD
+#define CMD58               (58)      // READ_OCR
 
+#define CT_MMC3             0x01      // MMC ver 3
+#define CT_MMC4             0x02      // MMC ver 4+
+#define CT_MMC              0x03      // MMC
+#define CT_SDC1             0x04      // SDv1
+#define CT_SDC2             0x08      // SDv2+
+#define CT_SDC              0x0C      // SD
+#define CT_BLOCK            0x10      // block addressing
+
+static volatile uint8_t card_status = STA_NOINIT;
 static uint8_t card_type;
 
 /*
@@ -69,6 +91,127 @@ static inline __attribute__((always_inline)) uint8_t mem_send(uint8_t data)
 	MEM_USART.DATA = data;
 	while (! (MEM_USART.STATUS & USART_RXCIF_bm));
 	return MEM_USART.DATA;
+}
+
+/*
+ * Sets up the memory timer to overflow after the given number of
+ * milliseconds passes (approximately). Maximum wait time is about 2 seconds.
+ * 
+ * This call assumes a fixed clock speed of 32MHz, which may not be the case in
+ * the future.
+ */
+static void mem_setup_timeout(uint16_t ms)
+{
+	MEM_TIMER.CTRLA = TC_CLKSEL_OFF_gc;
+	MEM_TIMER.CTRLFSET = TC_CMD_RESET_gc;
+	// clk/1024 is 32us/tick, * 32 = 1.024ms
+	MEM_TIMER.PER = (ms << 5);
+	MEM_TIMER.CTRLA = TC_CLKSEL_DIV1024_gc;
+}
+
+/*
+ * Sends 0xFF to the card until it is no longer busy, or until the timeout is
+ * reached. Returns true on ready, false otherwise.
+ */
+static uint8_t mem_wait_ready(uint16_t ms)
+{
+	uint8_t v;
+	mem_setup_timeout(ms);
+	do
+	{
+		v = mem_send(0xFF);
+	}
+	while (v != 0xFF && (! mem_timed_out()));
+	return (v == 0xFF) ? 1 : 0;
+}
+
+static void mem_deselect(void)
+{
+	cs_release();
+	mem_send(0xFF);
+}
+
+static uint8_t mem_select(void)
+{
+	cs_assert();
+	mem_send(0xFF);
+	if (mem_wait_ready(500)) return 1; // ok
+	mem_deselect();
+	return 0; // timeout
+}
+
+static uint8_t mem_bulk_read(uint8_t* buffer, uint16_t count)
+{
+	uint8_t token;
+	mem_setup_timeout(200);
+	do
+	{
+		token = mem_send(0xFF);
+	}
+	while (token == 0xFF && (! mem_timed_out()));
+	if (token != 0xFE) return 0;
+	
+	MEM_USART.DATA = 0xFF;
+	while (! (MEM_USART.STATUS & USART_DREIF_bm));
+	MEM_USART.DATA = 0xFF;
+	do
+	{
+		while (data_not_ready());
+		*buffer++ = MEM_USART.DATA;
+		MEM_USART.DATA = 0xFF;
+	}
+	while (--count); // sends +2 than requested for CRC
+
+	// trash CRC
+	while (data_not_ready());
+	MEM_USART.DATA;
+	while (data_not_ready());
+	MEM_USART.DATA;
+	
+	return 1;
+}
+
+static uint8_t mem_bulk_write(const uint8_t* buffer, uint8_t token, uint16_t count)
+{
+	if (! mem_wait_ready(500)) return 0;
+	mem_send(token);
+	if (token != 0xFD)
+	{
+		// send requested count
+		MEM_USART.DATA = *buffer++;
+		while (! (MEM_USART.STATUS & USART_DREIF_bm));
+		MEM_USART.DATA = *buffer++;
+		count -= 2;
+		do
+		{
+			while (data_not_ready());
+			MEM_USART.DATA;
+			MEM_USART.DATA = *buffer++;
+		}
+		while (--count);
+		
+		// trash CRC
+		while (data_not_ready());
+		MEM_USART.DATA;
+		MEM_USART.DATA = 0xFF;
+		while (data_not_ready());
+		MEM_USART.DATA;
+		MEM_USART.DATA = 0xFF;
+		
+		// flush CRC responses and send final byte to get status
+		while (data_not_ready());
+		MEM_USART.DATA;
+		MEM_USART.DATA = 0xFF;
+		while (data_not_ready());
+		MEM_USART.DATA;
+		
+		// get status response 
+		while (data_not_ready());
+		uint8_t response = MEM_USART.DATA;
+		if ((response & 0x1F) != 0x05) return 0;
+	}
+	
+	return 1;
 }
 
 /*
@@ -110,10 +253,6 @@ static void mem_reset(void)
 	MEM_USART.CTRLB |= USART_RXEN_bm;
 }
 
-/*
- * Send a command to the memory card. This follows the steps from the
- * sample code.
- */
 static uint8_t mem_cmd(uint8_t cmd, uint32_t arg)
 {
 	uint8_t n, res;
@@ -126,14 +265,15 @@ static uint8_t mem_cmd(uint8_t cmd, uint32_t arg)
 		if (res > 1) return res;
 	}
 	
-	// select the card
-	cs_release();
-	mem_send(0xFF);
-	cs_assert();
-	mem_send(0xFF);
-	
+	// select the card, unless stopping a multiple block read
+	if (cmd != CMD12)
+	{
+		mem_deselect();
+		if (! mem_select()) return 0xFF;
+	}
+
 	// send a command packet
-	mem_send(cmd);
+	mem_send(cmd | 0x40);
 	mem_send((uint8_t) (arg >> 24));
 	mem_send((uint8_t) (arg >> 16));
 	mem_send((uint8_t) (arg >> 8));
@@ -151,6 +291,9 @@ static uint8_t mem_cmd(uint8_t cmd, uint32_t arg)
 	}
 	mem_send(n);
 	
+	// skip stuff byte when stopping a multiple block read
+	if (cmd == CMD12) mem_send(0xFF);
+	
 	// wait for response
 	n = 10;
 	do
@@ -162,23 +305,25 @@ static uint8_t mem_cmd(uint8_t cmd, uint32_t arg)
 }
 
 /*
- * Initialize the memory card. This is derived from the sample code; refer
- * there for more details.
+ * ============================================================================
+ *   Public Functions
+ * ============================================================================
  */
-DSTATUS disk_initialize(void)
+
+DSTATUS disk_initialize(BYTE pdrv)
 {
+	if (pdrv != 0) return STA_NOINIT;
+	
 	uint8_t n, cmd, type, ocr[4];
-	uint16_t tmr;
-	
-	#if PF_USE_WRITE
-	if (card_type != 0 && is_cs_asserted()) disk_writep(0, 0);
-	#endif
-	
+
 	mem_reset();
 	
 	type = 0;
-	if (mem_cmd(CMD0, 0) == 1)
+	if (mem_cmd(CMD0, 0) == 1) // go to SPI mode
 	{
+		// limit total init time to ~1 second
+		mem_setup_timeout(1000);
+		
 		if (mem_cmd(CMD8, 0x1AA))
 		{
 			// SDv2
@@ -189,19 +334,17 @@ DSTATUS disk_initialize(void)
 			if (ocr[2] == 0x01 && ocr[3] == 0xAA)
 			{
 				// wait to leave idle state (ACMD41 with HCS bit)
-				for (tmr = 10000; mem_cmd(ACMD41, 1UL<<30) && tmr; tmr--)
-				{
-					_delay_us(100);
-				}
+				while ((! mem_timed_out()) && mem_cmd(ACMD41, 1UL<<30));
+
 				// check CCS bit in the OCR
-				if (tmr && mem_cmd(CMD58, 0) == 0)
+				if ((! mem_timed_out()) && mem_cmd(CMD58, 0) == 0)
 				{
 					for (n = 0; n < 4; n++)
 					{
 						ocr[n] = mem_send(0xFF);
 					}
 					// SDv2 (HC or SC)
-					type = (ocr[0] & 0x40) ? CT_SD2 | CT_BLOCK : CT_SD2;
+					type = (ocr[0] & 0x40) ? CT_SDC2 | CT_BLOCK : CT_SDC2;
 				}
 			}	
 		}
@@ -210,7 +353,7 @@ DSTATUS disk_initialize(void)
 			if (mem_cmd(ACMD41, 0) <= 1)
 			{
 				// SDv1
-				type = CT_SD1;
+				type = CT_SDC1;
 				cmd = ACMD41;
 			}
 			else
@@ -220,12 +363,10 @@ DSTATUS disk_initialize(void)
 				cmd = CMD1;
 			}
 			// wait to leave idle state
-			for (tmr = 10000; mem_cmd(cmd, 0) && tmr; tmr--)
-			{
-				_delay_us(100);
-			}
+			while ((! mem_timed_out()) && mem_cmd(cmd, 0));
+
 			// set R/W block length to 512
-			if (!tmr || mem_cmd(CMD16, 512) != 0)
+			if (mem_timed_out() || mem_cmd(CMD16, 512) != 0)
 			{
 				type = 0;
 			}
@@ -233,150 +374,177 @@ DSTATUS disk_initialize(void)
 	}
 	
 	card_type = type;
-	cs_release();
-	mem_send(0xFF);
+	mem_deselect();
 	
 	if (type)
 	{
-		// card OK, we can now communicate at full speed
+		card_status &= ~STA_NOINIT;
 		MEM_USART.BAUDCTRLA = MEM_BAUDCTRL_NORMAL;
 		MEM_USART.BAUDCTRLB = 0;
-		return 0;
 	}
-	else
-	{
-		return STA_NOINIT;
-	}
+	
+	return card_status;
 }
 
-DRESULT disk_readp(
-	BYTE *buff,     // pointer to the read buffer, or null for stream
-	DWORD sector,   // LBA
-	UINT offset,    // byte offset to start reading from
-	UINT count      // number of bytes to read
+DSTATUS disk_status(BYTE pdrv)
+{
+	if (pdrv != 0) return STA_NOINIT;
+	return card_status;
+}
+
+DRESULT disk_read (
+	BYTE pdrv,
+	BYTE* buff,
+	LBA_t lba,
+	UINT count      // number of sectors
 )
 {
-	DRESULT res;
-	BYTE rc;
-	UINT bc;
+	if (pdrv != 0) return RES_NOTRDY;
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	if (! count) return RES_PARERR;
 	
-	// convert to byte address if needed
+	uint32_t sector = (uint32_t) lba;
 	if (! (card_type & CT_BLOCK)) sector *= 512;
 	
-	res = RES_ERROR;
-	if (mem_cmd(CMD17, sector) == 0)
+	uint8_t cmd = count > 1 ? CMD18 : CMD17;
+	if (mem_cmd(cmd, sector) == 0)
 	{
-		bc = 40000;
 		do
 		{
-			rc = mem_send(0xFF);
+			if (! mem_bulk_read(buff, 512)) break;
+			buff += 512;
 		}
-		while (rc == 0xFF && --bc);
-		if (rc == 0xFE)
-		{
-			// number of trailing bytes to skip
-			bc = 512 + 2 - offset - count;
-			
-			// skip leading bytes in the sector
-			while (offset--) mem_send(0xFF);
-			
-			if (buff)
-			{
-				// store to buffer
-				do
-				{
-					*buff++ = mem_send(0xFF);
-				}
-				while (--count);
-			}
-			else
-			{
-				// forward (as of now does nothing)
-				do
-				{
-					mem_send(0xFF);
-				}
-				while (--count);
-			}
-			
-			// skip trailing bytes in the sector and block CRC
-			do
-			{
-				mem_send(0xFF);
-			}
-			while (--bc);
-			
-			res = RES_OK;
-		}
+		while (--count);
 	}
+	mem_deselect();
 	
-	cs_release();
-	mem_send(0xFF);
-	return res;
+	return count ? RES_ERROR : RES_OK;
 }
 
-#if PF_USE_WRITE
-DRESULT disk_writep (
-	const BYTE *buff,    // pointer to the bytes to be written
-	DWORD sc             // number bytes to send, LBA, or zero
+#if !FF_FS_READONLY
+DRESULT disk_write (
+	BYTE pdrv,
+	const BYTE* buff,
+	LBA_t lba,
+	UINT count      // number of sectors
 )
 {
-	DRESULT res;
-	UINT bc;
-	static UINT wc; // sector write counter
-	
-	res = RES_ERROR;
-	
-	if (buff)
+	if (pdrv != 0) return RES_NOTRDY;
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	if (! count) return RES_PARERR;
+	if (card_status & STA_PROTECT) return RES_WRPRT; // never true
+
+	uint32_t sector = (uint32_t) lba;
+	if (! (card_type & CT_BLOCK)) sector *= 512;
+
+	if (count == 1)
 	{
-		bc = sc;
-		while (bc && wc)
+		if ((mem_cmd(CMD24, sector) == 0) && mem_bulk_write(buff, 0xFE, 512))
 		{
-			mem_send(*buff++);
-			wc--;
-			bc--;
+			count = 0;
 		}
-		res = RES_OK;
 	}
 	else
 	{
-		if (sc)
+		if (card_type & CT_SDC) mem_cmd(ACMD23, count);
+		if (mem_cmd(CMD25, sector) == 0)
 		{
-			// start sector write
-			
-			// convert to byte address if needed
-			if (! (card_type & CT_BLOCK)) sc *= 512;
-			if (mem_cmd(CMD24, sc) == 0)
+			do
 			{
-				mem_send(0xFF);
-				mem_send(0xFE);
-				wc = 512;
-				res = RES_OK;
+				if (! mem_bulk_write(buff, 0xFC, 512)) break;
+				buff += 512;
 			}
-		}
-		else
-		{
-			bc = wc + 2;
-			// fill leftover bytes and CRC with zeros
-			while (bc--) mem_send(0x00);
-			
-			// receive data rseponse and wait for end of write
-			// timeout is 500ms
-			if ((mem_send(0xFF) & 0x1F) == 0x05)
-			{
-				// wait until card is ready
-				for (bc = 5000; mem_send(0xFF) != 0xFF && bc; bc--)
-				{
-					_delay_us(100);
-				}
-				if (bc) res = RES_OK;
-			}
-			
-			cs_release();
-			mem_send(0xFF);
+			while (--count);
+			if (mem_bulk_write(buff, 0xFD, 0)) count = 1;
 		}
 	}
-	
-	return res;
+	mem_deselect();
+
+	return count ? RES_ERROR : RES_OK;
 }
 #endif
+
+DRESULT disk_ioctl (
+	BYTE pdrv,
+	BYTE cmd,
+	void* buff
+)
+{
+	DRESULT result;
+	BYTE n, csd[16];
+	DWORD csize;
+
+	if (pdrv != 0) return RES_NOTRDY;
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	
+	result = RES_ERROR;
+	switch (cmd)
+	{
+		case CTRL_SYNC:
+			if (mem_select()) result = RES_OK;
+			mem_deselect();
+			break;
+			
+		case GET_SECTOR_COUNT: // get number of sectors on disk
+			if ((mem_cmd(CMD9, 0) == 0) && mem_bulk_read(csd, 16))
+			{
+				if ((csd[0] >> 6) == 1) // SDv2
+				{
+					csize = csd[9] + ((WORD)csd[8] << 8)
+							+ ((DWORD)(csd[7] & 63) << 16) + 1;
+					*(LBA_t*) buff = csize << 10;
+				}
+				else // SDv1 or MMC
+				{
+					n = (csd[5] & 15) + ((csd[10] & 128) >> 7)
+							+ ((csd[9] & 3) << 1) + 2;
+					csize = (csd[8] >> 6) + ((WORD) csd[7] << 2)
+							+ ((WORD) (csd[6] & 3) << 10) + 1;
+					*(LBA_t*) buff = csize << (n - 9);
+				}
+				result = RES_OK;
+			}
+			mem_deselect();
+			break;
+
+		case GET_BLOCK_SIZE: // set erase block size in sectors
+			if (card_type & CT_SDC2) // SDv2
+			{
+				if (mem_cmd(ACMD13, 0) == 0)
+				{
+					mem_send(0xFF);
+					if (mem_bulk_read(csd, 16))
+					{
+						for (n = 64 - 16; n; n--) mem_send(0xFF);
+						*(DWORD*) buff = 16UL << (csd[10] >> 4);
+						result = RES_OK;
+					}
+				}
+			}
+			else // SDv1 or MMCv3
+			{
+				if ((mem_cmd(CMD9, 0) == 0) && mem_bulk_read(csd, 16))
+				{
+					if (card_type & CT_SDC1)
+					{
+						*(DWORD*) buff = (((csd[10] & 63) << 1)
+								+ ((WORD) (csd[11] & 128) >> 7) + 1)
+										<< ((csd[13] >> 6) - 1);
+					}
+					else
+					{
+						*(DWORD*)buff = ((WORD) ((csd[10] & 124) >> 2) + 1)
+								* (((csd[11] & 3) << 3)
+								+ ((csd[11] & 224) >> 5) + 1);
+					}
+				}
+			}
+			mem_deselect();
+			break;
+
+		default:
+			result = RES_PARERR;
+	}
+
+	return result;
+}

@@ -133,6 +133,12 @@
 #define MEM_BAUDCTRL_NORMAL     0
 
 /*
+ * Timer used to implement timeouts with the memory card inteface.
+ */
+#define MEM_TIMER               TCF0
+#define MEM_TIMER_OVF           TC0_OVFIF_bm
+
+/*
  * ****************************************************************************
  * 
  *   SCSI PHY
