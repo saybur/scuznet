@@ -14,7 +14,7 @@ MCU := atxmega64a3u
 F_CPU := 32000000
 WARNINGS := -Wall -Wextra -pedantic
 CC := avr-gcc
-CFLAGS ?= -std=c99 $(WARNINGS) -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(OPTIONS)
+CFLAGS ?= $(WARNINGS) -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(OPTIONS)
 AVRDUDE_FLAGS := -p $(MCU) -c $(PROGRAMMER) -P usb
 
 MAIN = program

@@ -146,7 +146,7 @@
  * aligned for faster lookups (in theory).
  */
 #ifdef PHY_PORT_DATA_IN_REVERSED
-static uint8_t phy_reverse_table[256] __attribute__ ((aligned (256))) = {
+const __flash uint8_t phy_reverse_table[256] __attribute__ ((aligned (256))) = {
 	0, 128, 64, 192, 32, 160, 96, 224, 16, 144, 80, 208, 48, 176, 112, 240, 8, 
 	136, 72, 200, 40, 168, 104, 232, 24, 152, 88, 216, 56, 184, 120, 248, 4, 
 	132, 68, 196, 36, 164, 100, 228, 20, 148, 84, 212, 52, 180, 116, 244, 12, 
@@ -172,7 +172,7 @@ static uint8_t phy_reverse_table[256] __attribute__ ((aligned (256))) = {
  * checking that when responding to selection). As with the above array, these
  * are stored in SRAM aligned to a 256 byte boundry for improved performance. 
  */
-static uint8_t phy_bits_set[256] __attribute__ ((aligned (256))) = {
+const __flash uint8_t phy_bits_set[256] __attribute__ ((aligned (256))) = {
 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 
 	3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 
 	3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 
