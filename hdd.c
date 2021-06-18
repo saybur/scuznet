@@ -19,7 +19,7 @@
 
 #include <avr/pgmspace.h>
 #include <util/delay.h>
-#include "lib/ff/ff.h"
+#include "lib/pff/pff.h"
 #include "config.h"
 #include "debug.h"
 #include "logic.h"
@@ -52,8 +52,6 @@ static uint8_t hdd_error;
 static uint8_t mem_buffer[MEMORY_BUFFER_LENGTH] = {
 	0x00, 0x00, 0x00, 0x40
 };
-
-static FIL fp;
 
 /*
  * ============================================================================
@@ -197,9 +195,9 @@ static void hdd_read(uint8_t* cmd)
 		for (uint16_t i = 0; i < op.length; i++)
 		{
 			// fetch data block
-			f_lseek(&fp, op.lba * 512);
+			pf_lseek(op.lba * 512);
 			op.lba++;
-			res = f_read(&fp, buffer, 512, &act_len);
+			res = pf_read(buffer, 512, &act_len);
 			if (res || act_len != 512)
 			{
 				debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
@@ -245,22 +243,29 @@ static void hdd_write(uint8_t* cmd)
 		return;
 	}
 
+	uint8_t buffer[512];
+
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_WRITE_STARTING);
 		phy_phase(PHY_PHASE_DATA_OUT);
-		f_lseek(&fp, op.lba * 512);
-		uint16_t exp_len = op.length * 512;
-		res = f_swrite(&fp, phy_data_ask_bulk, exp_len, &act_len);
-		if (res || act_len != exp_len)
+
+		for (uint16_t i = 0; i < op.length; i++)
 		{
-			debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
-			hdd_error = 1;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-			return;
+			phy_data_ask_bulk(buffer, 512);
+			pf_lseek(op.lba * 512);
+			op.lba++;
+			res = pf_write(buffer, 512, &act_len);
+			if (res || act_len != 512)
+			{
+				debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
+				hdd_error = 1;
+				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+						SENSE_DATA_NO_INFORMATION);
+				logic_status(LOGIC_STATUS_CHECK_CONDITION);
+				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+				return;
+			}
 		}
 	}
 
@@ -746,19 +751,6 @@ void hdd_set_ready(uint32_t blocks)
 	capacity_data[3] = 0;
 	hdd_ready = 1;
 	hdd_error = 0;
-
-	// TESTING HDD CODE
-	uint8_t res = f_open(&fp, "0.IMG", FA_READ | FA_WRITE);
-	if (res)
-	{
-		while (1)
-		{
-			led_on();
-			_delay_ms(250);
-			led_off();
-			_delay_ms(250);
-		}
-	}
 }
 
 uint8_t hdd_has_error(void)

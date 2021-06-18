@@ -19,7 +19,7 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
-#include "lib/ff/ff.h"
+#include "lib/pff/pff.h"
 #include "config.h"
 #include "debug.h"
 #include "enc.h"
@@ -108,7 +108,7 @@ int main(void)
 	phy_init_hold();
 
 	// setup virtual hard drives (TEST CODE)
-	uint8_t res = f_mount(&fs, "", 0);
+	uint8_t res = pf_mount(&fs);
 	if (res)
 	{
 		while (1)
@@ -117,6 +117,17 @@ int main(void)
 			_delay_ms(1000);
 			led_off();
 			_delay_ms(1000);
+		}
+	}
+	res = pf_open("0.IMG");
+	if (res)
+	{
+		while (1)
+		{
+			led_on();
+			_delay_ms(250);
+			led_off();
+			_delay_ms(250);
 		}
 	}
 	hdd_set_ready(1024000); // 500MB in 512 byte sectors

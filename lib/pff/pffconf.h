@@ -11,12 +11,12 @@
 
 #define	PF_USE_READ		1	/* pf_read() function */
 #define	PF_USE_DIR		0	/* pf_opendir() and pf_readdir() function */
-#define	PF_USE_LSEEK	0	/* pf_lseek() function */
-#define	PF_USE_WRITE	0	/* pf_write() function */
+#define	PF_USE_LSEEK	1	/* pf_lseek() function */
+#define	PF_USE_WRITE	1	/* pf_write() function */
 
-#define PF_FS_FAT12		0	/* FAT12 */
+#define PF_FS_FAT12		1	/* FAT12 */
 #define PF_FS_FAT16		1	/* FAT16 */
-#define PF_FS_FAT32		0	/* FAT32 */
+#define PF_FS_FAT32		1	/* FAT32 */
 
 
 /*---------------------------------------------------------------------------/
