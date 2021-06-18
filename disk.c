@@ -421,6 +421,16 @@ DRESULT disk_read (
 	return count ? RES_ERROR : RES_OK;
 }
 
+DRESULT disk_read_multi (
+	UINT (*func)(const BYTE*,UINT),
+	LBA_t lba,
+	UINT count
+)
+{
+	// TODO implement
+	return RES_NOTRDY;
+}
+
 #if !FF_FS_READONLY
 DRESULT disk_write (
 	BYTE pdrv,
@@ -461,6 +471,16 @@ DRESULT disk_write (
 	mem_deselect();
 
 	return count ? RES_ERROR : RES_OK;
+}
+
+DRESULT disk_write_multi (
+	UINT (*func)(const BYTE*,UINT),
+	LBA_t lba,
+	UINT count
+)
+{
+	// TODO implement
+	return RES_NOTRDY;
 }
 #endif
 
