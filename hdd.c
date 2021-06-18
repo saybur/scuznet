@@ -245,29 +245,22 @@ static void hdd_write(uint8_t* cmd)
 		return;
 	}
 
-	uint8_t buffer[512];
-
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_WRITE_STARTING);
 		phy_phase(PHY_PHASE_DATA_OUT);
-		for (uint16_t i = 0; i < op.length; i++)
+		f_lseek(&fp, op.lba * 512);
+		uint16_t exp_len = op.length * 512;
+		res = f_swrite(&fp, phy_data_ask_bulk, exp_len, &act_len);
+		if (res || act_len != exp_len)
 		{
-			phy_data_ask_bulk(buffer, 512);
-			
-			f_lseek(&fp, op.lba * 512);
-			op.lba++;
-			res = f_write(&fp, buffer, 512, &act_len);
-			if (res || act_len != 512)
-			{
-				debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
-				hdd_error = 1;
-				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-						SENSE_DATA_NO_INFORMATION);
-				logic_status(LOGIC_STATUS_CHECK_CONDITION);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				return;
-			}
+			debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+			return;
 		}
 	}
 

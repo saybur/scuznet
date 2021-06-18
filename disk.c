@@ -33,6 +33,8 @@
  */
 
 #include <avr/io.h>
+#include <stdlib.h>
+#include <util/atomic.h>
 #include <util/delay.h>
 #include "./lib/ff/ff.h"
 #include "./lib/ff/diskio.h"
@@ -42,6 +44,7 @@
 #define cs_release()        (MEM_PORT.OUTSET = MEM_PIN_CS)
 #define is_cs_asserted()    (! (MEM_PORT.IN & MEM_PIN_CS))
 #define data_not_ready()    (! (MEM_USART.STATUS & USART_RXCIF_bm))
+#define dma_not_ready()     (! (MEM_DMA_READ.CTRLB & (DMA_CH_ERRIF_bm | DMA_CH_TRNIF_bm)))
 
 #define mem_timed_out()	    (MEM_TIMER.INTFLAGS & TC0_OVFIF_bm)
 
@@ -422,7 +425,8 @@ DRESULT disk_read (
 }
 
 DRESULT disk_read_multi (
-	UINT (*func)(const BYTE*,UINT),
+	BYTE pdrv,
+	UINT (*func)(BYTE*,UINT),
 	LBA_t lba,
 	UINT count
 )
@@ -465,7 +469,7 @@ DRESULT disk_write (
 				buff += 512;
 			}
 			while (--count);
-			if (mem_bulk_write(buff, 0xFD, 0)) count = 1;
+			if (! mem_bulk_write(buff, 0xFD, 0)) count = 1;
 		}
 	}
 	mem_deselect();
@@ -474,13 +478,135 @@ DRESULT disk_write (
 }
 
 DRESULT disk_write_multi (
-	UINT (*func)(const BYTE*,UINT),
+	BYTE pdrv,
+	UINT (*func)(BYTE*,UINT),
 	LBA_t lba,
 	UINT count
 )
 {
-	// TODO implement
-	return RES_NOTRDY;
+	if (pdrv != 0) return RES_NOTRDY;
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	if (! count) return RES_PARERR;
+	if (card_status & STA_PROTECT) return RES_WRPRT; // never true
+
+	uint32_t sector = (uint32_t) lba;
+	if (! (card_type & CT_BLOCK)) sector *= 512;
+
+	if (count == 1)
+	{
+		// we treat single-sector writes like a normal FIFO call
+		void* buff = malloc(512);
+		if (buff != NULL)
+		{
+			uint16_t wr_len = func(buff, 512);
+			if (wr_len == 512)
+			{
+				if ((mem_cmd(CMD24, sector) == 0) && mem_bulk_write(buff, 0xFE, 512))
+				{
+					count = 0;
+				}
+			}
+			else
+			{
+				count = 0;
+			}
+		}
+		free(buff);
+	}
+	else
+	{
+		// multiple sector writes use DMA
+		if (card_type & CT_SDC) mem_cmd(ACMD23, count);
+		if (mem_cmd(CMD25, sector) == 0)
+		{
+			// TODO verify malloc() does not fail
+			uint8_t bufsel = 1;
+			uint16_t wr_len;
+			uint8_t* buff_a = (uint8_t*) malloc(516);
+			*buff_a = 0xFC;
+			*(buff_a + 513) = 0xFF;
+			*(buff_a + 514) = 0xFF;
+			*(buff_a + 515) = 0xFF;
+			uint8_t* buff_b = (uint8_t*) malloc(516);
+			*buff_b = 0xFC;
+			*(buff_b + 513) = 0xFF;
+			*(buff_b + 514) = 0xFF;
+			*(buff_b + 515) = 0xFF;
+			uint8_t* cbuf;
+			MEM_GPIOR = 0x05; // allow first itr to pass
+
+			// setup the parts of DMA that are consistent throughout
+			MEM_DMA_WRITE.ADDRCTRL = DMA_CH_SRCDIR_INC_gc;
+			MEM_DMA_WRITE.TRFCNT = 516;
+			ATOMIC_BLOCK(ATOMIC_FORCEON)
+			{
+				MEM_DMA_READ.DESTADDR0 = (uint8_t) ((uint16_t) &MEM_GPIOR);
+				MEM_DMA_READ.DESTADDR1 = (uint8_t) (((uint16_t) (&MEM_GPIOR)) >> 8);
+				MEM_DMA_READ.DESTADDR2 = 0;
+			}
+			MEM_DMA_READ.TRFCNT = 516;
+			MEM_DMA_READ.ADDRCTRL = 0;
+
+			do
+			{
+				// swap between buffers
+				if (bufsel)
+				{
+					cbuf = buff_a;
+				}
+				else
+				{
+					cbuf = buff_b;
+				}
+				bufsel = !bufsel;
+				
+				// fetch fresh data
+				wr_len = func(cbuf + 1, 512);
+				if (wr_len == 512)
+				{
+					// wait for the last DMA transaction to finish
+					while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
+					if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm) break;
+
+					// check result of last transaction
+					uint8_t response = MEM_GPIOR;
+					if ((response & 0x1F) != 0x05) break;
+
+					// setup channel for the fresh data
+					ATOMIC_BLOCK(ATOMIC_FORCEON)
+					{
+						MEM_DMA_WRITE.SRCADDR0 = (uint8_t) ((uint16_t) cbuf);
+						MEM_DMA_WRITE.SRCADDR1 = ((uint16_t) cbuf) >> 8;
+						MEM_DMA_WRITE.SRCADDR2 = 0;
+					}
+
+					// wait for the card to become ready
+					if (! mem_wait_ready(500)) break;
+
+					// execute the DMA operation
+					MEM_DMA_READ.CTRLA |= DMA_CH_ENABLE_bm;
+					MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
+				}
+			}
+			while (--count && wr_len == 512);
+
+			// wait for the last DMA transaction to finish
+			while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
+			if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm) count = 1;
+
+			// check result of last transaction
+			uint8_t response = MEM_GPIOR;
+			if ((response & 0x1F) != 0x05) count = 1;
+
+			// then send finalization and clean up
+			if (! mem_bulk_write(NULL, 0xFD, 0)) count = 1;
+			free(buff_a);
+			free(buff_b);
+		}
+	}
+	mem_deselect();
+
+	return count ? RES_ERROR : RES_OK;
 }
 #endif
 
