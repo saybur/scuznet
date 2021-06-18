@@ -47,9 +47,6 @@ static uint8_t capacity_data[8] = {
 static uint8_t hdd_ready;
 static uint8_t hdd_error;
 
-// generic sector-sized buffer used within a single command
-static uint8_t buffer[512];
-
 // generic buffer for READ/WRITE BUFFER commands
 #define MEMORY_BUFFER_LENGTH 68
 static uint8_t mem_buffer[MEMORY_BUFFER_LENGTH] = {
@@ -191,6 +188,8 @@ static void hdd_read(uint8_t* cmd)
 		return;
 	}
 
+	uint8_t buffer[512];
+
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_READ_STARTING);
@@ -246,6 +245,8 @@ static void hdd_write(uint8_t* cmd)
 		return;
 	}
 
+	uint8_t buffer[512];
+
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_WRITE_STARTING);
@@ -294,6 +295,7 @@ static void hdd_mode_sense(uint8_t* cmd)
 	uint8_t cmd_page = cmd[2] & 0x3F;
 
 	// reset result length values
+	uint8_t buffer[128];
 	buffer[0] = 0;
 	buffer[1] = 0;
 
