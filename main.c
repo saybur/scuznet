@@ -66,6 +66,7 @@ int main(void)
 	init_clock();
 	init_debug();
 	led_on();
+	init_dma();
 	enc_init();
 	init_mem();
 	init_isr();

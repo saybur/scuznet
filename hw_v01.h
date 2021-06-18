@@ -84,6 +84,9 @@
 #define ENC_PIN_INT             PIN5_bm
 #define ENC_INT_PINCTRL         PORTF.PIN5CTRL
 
+#define ENC_DMA_TX_TRIG         DMA_CH_TRIGSRC_USARTF0_DRE_gc
+#define ENC_DMA_RX_TRIG         DMA_CH_TRIGSRC_USARTF0_RXC_gc
+
 /*
  * ****************************************************************************
  * 
@@ -98,6 +101,8 @@
 #define MEM_PIN_RX              PIN6_bm
 #define MEM_PIN_TX              PIN7_bm
 #define MEM_PINCTRL_RX          PORTE.PIN6CTRL
+#define MEM_DMA_TX_TRIG         DMA_CH_TRIGSRC_USARTE1_DRE_gc
+#define MEM_DMA_RX_TRIG         DMA_CH_TRIGSRC_USARTE1_RXC_gc
 
 /*
  * ****************************************************************************

@@ -440,10 +440,10 @@ void phy_data_offer(uint8_t data)
 	req_release();
 }
 
-void phy_data_offer_bulk(uint8_t* data, uint16_t len)
+uint16_t phy_data_offer_bulk(uint8_t* data, uint16_t len)
 {
-	if (! (PHY_REGISTER_PHASE & 0x01)) return;
-	if (! phy_is_active()) return;
+	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
+	if (! phy_is_active()) return 0;
 
 	for (uint16_t i = 0; i < len; i++)
 	{
@@ -453,6 +453,7 @@ void phy_data_offer_bulk(uint8_t* data, uint16_t len)
 		while (! phy_is_ack_asserted());
 		req_release();
 	}
+	return len;
 }
 
 void phy_data_offer_stream(USART_t* usart, uint16_t len)
@@ -526,11 +527,11 @@ uint8_t phy_data_ask(void)
 	return data;
 }
 
-void phy_data_ask_bulk(uint8_t* data, uint16_t len)
+uint16_t phy_data_ask_bulk(uint8_t* data, uint16_t len)
 {
 	uint8_t v;
 
-	if (! phy_is_active()) return;
+	if (! phy_is_active()) return 0;
 
 	for (uint16_t i = 0; i < len; i++)
 	{
@@ -545,6 +546,8 @@ void phy_data_ask_bulk(uint8_t* data, uint16_t len)
 			data[i] = v;
 		#endif
 	}
+
+	return len;
 }
 
 void phy_data_ask_stream(USART_t* usart, uint16_t len)

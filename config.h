@@ -139,6 +139,14 @@
 #define MEM_TIMER_OVF           TC0_OVFIF_bm
 
 /*
+ * DMA 
+ */
+#define MEM_DMA_READ            DMA.CH0
+#define MEM_DMA_WRITE           DMA.CH1
+#define MEM_GPIOR               GPIORF
+
+
+/*
  * ****************************************************************************
  * 
  *   SCSI PHY

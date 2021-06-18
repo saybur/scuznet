@@ -47,6 +47,13 @@ void init_clock(void);
 void init_debug(void);
 
 /*
+ * Initializes the DMAC and sets up constant values for the DMA channels.
+ * 
+ * This should only be called once, from main(), during initial MCU startup.
+ */
+void init_dma(void);
+
+/*
  * Sets up the PMIC for all interrupt levels and activates interrupts.
  */
 void init_isr(void);

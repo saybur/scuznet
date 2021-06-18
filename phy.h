@@ -185,7 +185,7 @@ void phy_data_offer(uint8_t);
  * Offers the initiator the given number bytes from the given array. Apart
  * from working on a series of bytes, this is identical to the above function.
  */
-void phy_data_offer_bulk(uint8_t*, uint16_t);
+uint16_t phy_data_offer_bulk(uint8_t*, uint16_t);
 
 /*
  * Used during DATA IN to take data from the given USART and send it to the
@@ -227,10 +227,9 @@ uint8_t phy_data_ask(void);
 
 /*
  * Asks the initiator for the given number of bytes and stores them in the
- * given array. Apart from working on a series of bytes, this is identical to
- * the above function.
+ * given array. The number of bytes received is returned.
  */
-void phy_data_ask_bulk(uint8_t*, uint16_t);
+uint16_t phy_data_ask_bulk(uint8_t*, uint16_t);
 
 /*
  * Used during DATA OUT to take data from the initiator and send it to the
