@@ -980,8 +980,57 @@ FRESULT pf_mread (
 	UINT* sr
 )
 {
-	// TODO implement
-	return FR_NOT_ENABLED;
+	CLUST clst;
+	DWORD sect, remain;
+	UINT cc;
+	BYTE cs;
+	FATFS *fs = FatFs;
+
+	*sr = 0;
+	if (!fs) return FR_NOT_ENABLED;		/* Check file system */
+	if (!(fs->flag & FA_OPENED)) return FR_NOT_OPENED;	/* Check if opened */
+	if (fs->flag & FA__WIP) return FR_NOT_READY; /* Partial write in progress */
+
+	fs->fptr &= 0xFFFFFE00; /* Round-down fptr to the sector boundary */
+
+	remain = (fs->fsize - fs->fptr) / 512;
+	if (str > remain) str = (UINT)remain;			/* Truncate str by remaining bytes */
+
+	while (str)	{									/* Repeat until all data transferred */
+		cs = (BYTE)(fs->fptr / 512 & (fs->csize - 1));	/* Sector offset in the cluster */
+		if (!cs) {								/* On the cluster boundary? */
+			if (fs->fptr == 0) {				/* On the top of the file? */
+				clst = fs->org_clust;
+			} else {
+				clst = get_fat(fs->curr_clust);
+			}
+			if (clst <= 1) ABORT(FR_DISK_ERR);
+			fs->curr_clust = clst;				/* Update current cluster */
+		}
+		sect = clust2sect(fs->curr_clust);		/* Get current sector */
+		if (!sect) ABORT(FR_DISK_ERR);
+
+		// set the number of sectors to read within this cluster
+		cc = str;
+		if (cs + cc > fs->csize) { // clip at cluster boundary [from FatFs]
+			cc = fs->csize - cs;
+		}
+
+		// perform read operation
+		uint8_t buf[512];
+		for (uint16_t i = 0; i < cc; i++)
+		{
+			if (disk_readp(buf, sect + cs + i, 0, 512)) ABORT(FR_DISK_ERR);
+			if (func(buf, 512) != 512) ABORT(FR_NOT_READY);
+			fs->fptr += 512;
+		}
+
+		// update pointers and counters
+		str -= cc;
+		*sr += cc;
+	}
+
+	return FR_OK;
 }
 
 #endif
