@@ -1064,10 +1064,8 @@ FRESULT pf_mwrite (
 	CLUST clst;
 	DWORD sect, remain;
 	BYTE cs;
+	UINT cc;
 	FATFS *fs = FatFs;
-
-	DWORD last_sector = 0;
-	BYTE sector_count = 0;
 
 	*sw = 0;
 	if (!fs) return FR_NOT_ENABLED;		/* Check file system */
@@ -1093,54 +1091,27 @@ FRESULT pf_mwrite (
 		sect = clust2sect(fs->curr_clust);		/* Get current sector */
 		if (!sect) ABORT(FR_DISK_ERR);
 
-		/*
-		 * Update the operation request variables. This increments, one sector at a time,
-		 * until the sector moves to a different point on the card, at which point the
-		 * previous request is executed against the memory card. This bunches requests up
-		 * to maximize performance.
-		 * 
-		 * This would be smarter to do via the cluster sizing, but every time I tried that
-		 * things would break. If anyone else (or a future me) can figure that out, updates
-		 * would be welcome.
-		 */
-		if (sect + 1 != last_sector) {
-			// we've moved to a different part of the memory card
-			if (sector_count != 0) {
-				// execute the pending operation
-				last_sector -= sector_count - 1; 
-				uint8_t buffer[512];
-				for (uint8_t i = 0; i < sector_count; i++) {
-					if (func(buffer, 512) != 512) ABORT(FR_NOT_READY);
-					if (disk_writep(0, last_sector++)) ABORT(FR_DISK_ERR);
-					if (disk_writep(buffer, 512)) ABORT(FR_DISK_ERR);
-					if (disk_writep(0, 0)) ABORT(FR_DISK_ERR);
-					fs->fptr += 512;
-				}
-			} else {
-				// nothing to execute, start a new request from this point
-				last_sector = sect;
-				sector_count = 1;
-			}
-		} else {
-			// +1 sector from the last time, append to request
-			last_sector++;
-			sector_count++;
+		// set the number of sectors to write within this cluster
+		cc = stw;
+		if (cs + cc > fs->csize) { // clip at cluster boundary [from FatFs]
+			cc = fs->csize - cs;
 		}
-		stw--;
-		(*sw)++;
-	}
 
-	// finalize last write
-	if (sector_count != 0) {
-		last_sector -= sector_count - 1; 
+		// perform write operation
+//		if (disk_write_multi(func, sect, cc)) ABORT(FR_DISK_ERR);
 		uint8_t buffer[512];
-		for (uint8_t i = 0; i < sector_count; i++) {
+		for (uint8_t i = 0; i < cc; i++) {
 			if (func(buffer, 512) != 512) ABORT(FR_NOT_READY);
-			if (disk_writep(0, last_sector++)) ABORT(FR_DISK_ERR);
+			if (disk_writep(0, sect + cs + i)) ABORT(FR_DISK_ERR);
 			if (disk_writep(buffer, 512)) ABORT(FR_DISK_ERR);
 			if (disk_writep(0, 0)) ABORT(FR_DISK_ERR);
 			fs->fptr += 512;
 		}
+
+		// update pointers and counters
+//		fs->fptr += cc * 512;
+		stw -= cc;
+		*sw += cc;
 	}
 
 	return FR_OK;

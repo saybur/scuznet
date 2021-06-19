@@ -298,7 +298,7 @@ static void hdd_write(uint8_t* cmd)
 		}
 		op.lba++;
 
-		for (uint16_t i = 0; i < op.length; i++)
+/*		for (uint16_t i = 0; i < op.length; i++)
 		{
 			// fetch data
 			phy_data_ask_bulk(buffer, 512);
@@ -307,7 +307,7 @@ static void hdd_write(uint8_t* cmd)
 			res = pf_write(buffer, 512, &act_len);
 			if (res || act_len != 512)
 			{
-				debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
+				debug_dual(DEBUG_HDD_MEM_WRITE_ERROR, res);
 				debug_dual(
 						(uint8_t) (act_len >> 8),
 						(uint8_t) act_len);
@@ -318,6 +318,23 @@ static void hdd_write(uint8_t* cmd)
 				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 				return;
 			}
+		}
+*/
+
+		// write to card
+		res = pf_mwrite(phy_data_ask_bulk, op.length, &act_len);
+		if (res || act_len != op.length)
+		{
+			debug_dual(DEBUG_HDD_MEM_WRITE_ERROR, res);
+			debug_dual(
+					(uint8_t) (act_len >> 8),
+					(uint8_t) act_len);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+			return;
 		}
 	}
 
