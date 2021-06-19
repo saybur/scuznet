@@ -542,9 +542,8 @@ DRESULT disk_write_multi (
 		if (mem_cmd(CMD25, sector) == 0)
 		{
 			mem_send(0xFF);
-			
-			
-/*			// TODO verify malloc() does not fail
+						
+			// TODO verify malloc() does not fail
 			uint8_t bufsel = 1;
 			uint16_t wr_len;
 			uint8_t* buff_a = (uint8_t*) malloc(516);
@@ -627,17 +626,6 @@ DRESULT disk_write_multi (
 			if (! mem_bulk_write(NULL, 0xFD, 0)) count = 1;
 			free(buff_a);
 			free(buff_b);
-*/
-
-			uint16_t wr_len;
-			void* buff = malloc(512);
-			do
-			{
-				wr_len = func(buff, 512);
-				if (wr_len != 512 || mem_bulk_write(buff, 0xFC, 512)) count = 0;
-			}
-			while (--count && wr_len == 512);
-			free(buff);
 		}
 	}
 	mem_deselect();

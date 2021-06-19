@@ -1098,18 +1098,10 @@ FRESULT pf_mwrite (
 		}
 
 		// perform write operation
-//		if (disk_write_multi(func, sect, cc)) ABORT(FR_DISK_ERR);
-		uint8_t buffer[512];
-		for (uint8_t i = 0; i < cc; i++) {
-			if (func(buffer, 512) != 512) ABORT(FR_NOT_READY);
-			if (disk_writep(0, sect + cs + i)) ABORT(FR_DISK_ERR);
-			if (disk_writep(buffer, 512)) ABORT(FR_DISK_ERR);
-			if (disk_writep(0, 0)) ABORT(FR_DISK_ERR);
-			fs->fptr += 512;
-		}
+		if (disk_write_multi(func, sect + cs, cc)) ABORT(FR_DISK_ERR);
 
 		// update pointers and counters
-//		fs->fptr += cc * 512;
+		fs->fptr += cc * 512;
 		stw -= cc;
 		*sw += cc;
 	}
