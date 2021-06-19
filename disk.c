@@ -383,6 +383,9 @@ DRESULT disk_readp(
 }
 
 #if PF_USE_WRITE
+
+static UINT wc; // sector write counter
+
 DRESULT disk_writep (
 	const BYTE *buff,    // pointer to the bytes to be written
 	DWORD sc             // number bytes to send, LBA, or zero
@@ -392,10 +395,8 @@ DRESULT disk_writep (
 
 	DRESULT res;
 	UINT bc;
-	static UINT wc; // sector write counter
 	
 	res = RES_ERROR;
-	
 	if (buff)
 	{
 		bc = sc;
@@ -411,10 +412,9 @@ DRESULT disk_writep (
 	{
 		if (sc)
 		{
-			// start sector write
-			
 			// convert to byte address if needed
 			if (! (card_type & CT_BLOCK)) sc *= 512;
+			// start sector write
 			if (mem_cmd(CMD24, sc) == 0)
 			{
 				mem_send(0xFF);
@@ -426,23 +426,25 @@ DRESULT disk_writep (
 		else
 		{
 			bc = wc + 2;
+			wc = 0;
+
 			// fill leftover bytes and CRC with zeros
 			while (bc--) mem_send(0x00);
 			
-			// receive data rseponse and wait for end of write
-			// timeout is 500ms
+			// receive data response and wait for end of write
 			if ((mem_send(0xFF) & 0x1F) == 0x05)
 			{
-				// wait until card is ready
-				for (bc = 5000; mem_send(0xFF) != 0xFF && bc; bc--)
+				// wait until card goes back to ready
+				mem_setup_timeout(500);
+				uint8_t v;
+				do
 				{
-					_delay_us(100);
+					v = mem_send(0xFF);
 				}
-				if (bc) res = RES_OK;
+				while (v != 0xFF && (! mem_timed_out()));
+				if (v == 0xFF) res = RES_OK;
 			}
-			
-			cs_release();
-			mem_send(0xFF);
+			mem_deselect();
 		}
 	}
 	
