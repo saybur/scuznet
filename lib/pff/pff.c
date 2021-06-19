@@ -973,6 +973,17 @@ FRESULT pf_read (
 
 	return FR_OK;
 }
+
+FRESULT pf_mread (
+	UINT (*func)(BYTE*,UINT),
+	UINT str,
+	UINT* sr
+)
+{
+	// TODO implement
+	return FR_NOT_ENABLED;
+}
+
 #endif
 
 
@@ -1043,6 +1054,98 @@ FRESULT pf_write (
 
 	return FR_OK;
 }
+
+FRESULT pf_mwrite (
+	UINT (*func)(BYTE*,UINT),
+	UINT stw,
+	UINT* sw
+)
+{
+	CLUST clst;
+	DWORD sect, remain;
+	BYTE cs;
+	FATFS *fs = FatFs;
+
+	DWORD last_sector = 0;
+	BYTE sector_count = 0;
+
+	*sw = 0;
+	if (!fs) return FR_NOT_ENABLED;		/* Check file system */
+	if (!(fs->flag & FA_OPENED)) return FR_NOT_OPENED;	/* Check if opened */
+	if (fs->flag & FA__WIP) return FR_NOT_READY; /* Partial write in progress */
+
+	fs->fptr &= 0xFFFFFE00; /* Round-down fptr to the sector boundary */
+
+	remain = (fs->fsize - fs->fptr) / 512;
+	if (stw > remain) stw = remain; /* truncate by remaining sectors */
+
+	while (stw)	{									/* Repeat until all data transferred */
+		cs = (BYTE)(fs->fptr / 512 & (fs->csize - 1));	/* Sector offset in the cluster */
+		if (!cs) {								/* On the cluster boundary? */
+			if (fs->fptr == 0) {				/* On the top of the file? */
+				clst = fs->org_clust;
+			} else {
+				clst = get_fat(fs->curr_clust);
+			}
+			if (clst <= 1) ABORT(FR_DISK_ERR);
+			fs->curr_clust = clst;				/* Update current cluster */
+		}
+		sect = clust2sect(fs->curr_clust);		/* Get current sector */
+		if (!sect) ABORT(FR_DISK_ERR);
+
+		/*
+		 * Update the operation request variables. This increments, one sector at a time,
+		 * until the sector moves to a different point on the card, at which point the
+		 * previous request is executed against the memory card. This bunches requests up
+		 * to maximize performance.
+		 * 
+		 * This would be smarter to do via the cluster sizing, but every time I tried that
+		 * things would break. If anyone else (or a future me) can figure that out, updates
+		 * would be welcome.
+		 */
+		if (sect + 1 != last_sector) {
+			// we've moved to a different part of the memory card
+			if (sector_count != 0) {
+				// execute the pending operation
+				last_sector -= sector_count - 1; 
+				uint8_t buffer[512];
+				for (uint8_t i = 0; i < sector_count; i++) {
+					if (func(buffer, 512) != 512) ABORT(FR_NOT_READY);
+					if (disk_writep(0, last_sector++)) ABORT(FR_DISK_ERR);
+					if (disk_writep(buffer, 512)) ABORT(FR_DISK_ERR);
+					if (disk_writep(0, 0)) ABORT(FR_DISK_ERR);
+					fs->fptr += 512;
+				}
+			} else {
+				// nothing to execute, start a new request from this point
+				last_sector = sect;
+				sector_count = 1;
+			}
+		} else {
+			// +1 sector from the last time, append to request
+			last_sector++;
+			sector_count++;
+		}
+		stw--;
+		(*sw)++;
+	}
+
+	// finalize last write
+	if (sector_count != 0) {
+		last_sector -= sector_count - 1; 
+		uint8_t buffer[512];
+		for (uint8_t i = 0; i < sector_count; i++) {
+			if (func(buffer, 512) != 512) ABORT(FR_NOT_READY);
+			if (disk_writep(0, last_sector++)) ABORT(FR_DISK_ERR);
+			if (disk_writep(buffer, 512)) ABORT(FR_DISK_ERR);
+			if (disk_writep(0, 0)) ABORT(FR_DISK_ERR);
+			fs->fptr += 512;
+		}
+	}
+
+	return FR_OK;
+}
+
 #endif
 
 

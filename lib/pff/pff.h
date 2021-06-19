@@ -125,7 +125,8 @@ FRESULT pf_write (const void* buff, UINT btw, UINT* bw);	/* Write data to the op
 FRESULT pf_lseek (DWORD ofs);								/* Move file pointer of the open file */
 FRESULT pf_opendir (DIR* dj, const char* path);				/* Open a directory */
 FRESULT pf_readdir (DIR* dj, FILINFO* fno);					/* Read a directory item from the open directory */
-
+FRESULT pf_mread (UINT (*func)(BYTE*,UINT), UINT str, UINT* sr);
+FRESULT pf_mwrite (UINT (*func)(BYTE*,UINT), UINT stw, UINT* sw);
 
 
 /*--------------------------------------------------------------*/

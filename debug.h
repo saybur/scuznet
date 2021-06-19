@@ -58,10 +58,10 @@
 #define DEBUG_HDD_PACKET_START                    0x8A
 #define DEBUG_HDD_PACKET_END                      0x8B
 #define DEBUG_HDD_NOT_READY                       0x90
-#define DEBUG_HDD_OP_INVALID                      0x91
-#define DEBUG_HDD_MEM_CMD_REJECTED                0x92
-#define DEBUG_HDD_MEM_BAD_HEADER                  0x93
-#define DEBUG_HDD_MEM_CARD_BUSY                   0x94
+#define DEBUG_HDD_MEM_SEEK_ERROR                  0x91
+#define DEBUG_HDD_MEM_READ_ERROR                  0x92
+#define DEBUG_HDD_MEM_WRITE_ERROR                 0x93
+#define DEBUG_HDD_INVALID_OPERATION               0x94
 #define DEBUG_LINK_TX_REQUESTED                   0xA0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5

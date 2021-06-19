@@ -45,8 +45,8 @@ critical for maintaining decent performance with modern memory cards.
 The two functions added are:
 
 ```
-FRESULT pf_mread (UINT (*func)(BYTE*,UINT), UINT btr, UINT* br);
-FRESULT pf_mwrite (UINT (*func)(BYTE*,UINT), UINT btw, UINT* bw);
+FRESULT pf_mread (UINT (*func)(BYTE*,UINT), UINT str, UINT* sr);
+FRESULT pf_mwrite (UINT (*func)(BYTE*,UINT), UINT stw, UINT* sw);
 ```
 
 They should be given a function that either reads or writes a sector's worth of

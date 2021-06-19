@@ -180,27 +180,53 @@ static void hdd_read(uint8_t* cmd)
 	LogicDataOp op = logic_data;
 	if (op.invalid)
 	{
-		debug(DEBUG_HDD_OP_INVALID);
+		debug(DEBUG_HDD_INVALID_OPERATION);
 		hdd_error = 1;
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
 	}
 
 	uint8_t buffer[512];
-
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_READ_STARTING);
+		// TODO should probably add a verbose option
+		debug_dual(
+						(uint8_t) (op.length >> 8),
+						(uint8_t) op.length);
+		debug_dual(
+						(uint8_t) (op.lba >> 24),
+						(uint8_t) (op.lba >> 16));
+		debug_dual(
+						(uint8_t) (op.lba >> 8),
+						(uint8_t) op.lba);
 		phy_phase(PHY_PHASE_DATA_IN);
+		
+		// move to correct sector
+		res = pf_lseek(op.lba * 512);
+		if (res)
+		{
+			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+			return;
+		}
+		op.lba++;
+
+		// transfer requested data
 		for (uint16_t i = 0; i < op.length; i++)
 		{
-			// fetch data block
-			pf_lseek(op.lba * 512);
-			op.lba++;
+			// read sector
 			res = pf_read(buffer, 512, &act_len);
 			if (res || act_len != 512)
 			{
-				debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
+				debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
+				debug_dual(
+						(uint8_t) (act_len >> 8),
+						(uint8_t) act_len);
 				hdd_error = 1;
 				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
 						SENSE_DATA_NO_INFORMATION);
@@ -237,28 +263,54 @@ static void hdd_write(uint8_t* cmd)
 	LogicDataOp op = logic_data;
 	if (op.invalid)
 	{
-		debug(DEBUG_HDD_OP_INVALID);
+		debug(DEBUG_HDD_INVALID_OPERATION);
 		hdd_error = 1;
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
 	}
 
 	uint8_t buffer[512];
-
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_WRITE_STARTING);
+		debug_dual(
+						(uint8_t) (op.length >> 8),
+						(uint8_t) op.length);
+		debug_dual(
+						(uint8_t) (op.lba >> 24),
+						(uint8_t) (op.lba >> 16));
+		debug_dual(
+						(uint8_t) (op.lba >> 8),
+						(uint8_t) op.lba);
 		phy_phase(PHY_PHASE_DATA_OUT);
+
+		// move to correct sector
+		res = pf_lseek(op.lba * 512);
+		if (res)
+		{
+			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+			return;
+		}
+		op.lba++;
 
 		for (uint16_t i = 0; i < op.length; i++)
 		{
+			// fetch data
 			phy_data_ask_bulk(buffer, 512);
-			pf_lseek(op.lba * 512);
-			op.lba++;
+			
+			// write to card
 			res = pf_write(buffer, 512, &act_len);
 			if (res || act_len != 512)
 			{
-				debug_dual(DEBUG_HDD_MEM_BAD_HEADER, res);
+				debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
+				debug_dual(
+						(uint8_t) (act_len >> 8),
+						(uint8_t) act_len);
 				hdd_error = 1;
 				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
 						SENSE_DATA_NO_INFORMATION);
