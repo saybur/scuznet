@@ -17,55 +17,195 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <avr/eeprom.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include "lib/inih/ini.h"
+#include "lib/pff/pff.h"
 #include "config.h"
 #include "debug.h"
 
-void config_read(uint8_t* data)
+ENETConfig config_enet = { 255, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
+HDDConfig config_hdd = { 255, NULL };
+
+static char* config_buffer;
+static uint16_t config_position;
+static uint16_t config_length;
+
+/*
+ * Function for providing to fdevopen() supporting memory card reads.
+ */ 
+static int config_fetch(FILE* fp)
 {
-	// perform read of data into given array
-	eeprom_read_block((void*) data,
-			(const void*) CONFIG_EEPROM_ADDR,
-			CONFIG_EEPROM_LENGTH);
-
-	// verify information contained is valid, or force-set defaults
-	if (data[CONFIG_OFFSET_VALIDITY] == CONFIG_EEPROM_VALIDITY)
+	(void) fp; // silence compiler
+	
+	if (config_position >= config_length)
 	{
-		debug(DEBUG_CONFIG_FOUND);
-		// data is at least theoretically OK, sanity check some items
+		// at end of buffer, need more data if there is any left
+		if (config_length != 512) return _FDEV_EOF;
+		// might have more data, check if so
+		if (pf_read(config_buffer, 512, &config_length)) return _FDEV_ERR;
+		if (config_length == 0) return _FDEV_EOF;
+		// must have more, reset to beginning of buffer
+		config_position = 0;
+	}
 
-		// check if device IDS are between 0 and 6
-		if (data[CONFIG_OFFSET_ID_HDD] > 6)
-		{
-			data[CONFIG_OFFSET_ID_HDD] = DEVICE_ID_HDD;
-		}
-		if (data[CONFIG_OFFSET_ID_LINK] > 6)
-		{
-			data[CONFIG_OFFSET_ID_LINK] = DEVICE_ID_LINK;
-		}
+	int r = *(config_buffer + config_position);
+	config_position++;
+	return r;
+}
 
-		// check that the device IDs are not colliding
-		if (data[CONFIG_OFFSET_ID_HDD] == data[CONFIG_OFFSET_ID_LINK])
-		{
-			data[CONFIG_OFFSET_ID_HDD] = DEVICE_ID_HDD;
-			data[CONFIG_OFFSET_ID_LINK] = DEVICE_ID_LINK;
-		}
+/*
+ * INIH callback for configuration information.
+ */
+static int config_handler(
+	void* user,
+	const char* section,
+	const char* name,
+	const char* value)
+{
+	(void) user; // silence compiler
 
-		// verify that MAC MSB has b0 cleared to avoid being multicast
-		data[CONFIG_OFFSET_MAC] &= ~_BV(0);
+	if (strcmp(section, "scuznet") == 0)
+	{
+		if (strcmp(name, "debug") == 0)
+		{
+			if (strcmp(value, "yes") == 0)
+			{
+				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_DEBUG;
+			}
+			return 1;
+		}
+		else if (strcmp(name, "verbose") == 0)
+		{
+			if (strcmp(value, "yes") == 0)
+			{
+				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_VERBOSE;
+			}
+			return 1;
+		}
+		else if (strcmp(name, "parity") == 0)
+		{
+			if (strcmp(value, "yes") == 0)
+			{
+				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_PARITY;
+			}
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	else if (strcmp(section, "ethernet") == 0)
+	{
+		if (strcmp(name, "id") == 0)
+		{
+			int i = atoi(value);
+			if (i >= 0 && i <= 6)
+			{
+				config_enet.id = (uint8_t) i;
+			}
+			return 1;
+		}
+		else if (strcmp(name, "mac") == 0)
+		{
+			int v;
+			char* copy = strdup(value);
+			char* tok = strtok(copy, ":");
+			for (uint8_t i = 0; i < 6 && tok != NULL; i++)
+			{
+				v = (int) strtol(tok, NULL, 16);
+				if (v >= 0 && v <= 255)
+				{
+					config_enet.mac[i] = (uint8_t) v;
+				}
+				tok = strtok(NULL, ":");
+			}
+			free(copy);
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	else if (strcmp(section, "hdd") == 0)
+	{
+		if (strcmp(name, "id") == 0)
+		{
+			int v = atoi(value);
+			if (v >= 0 && v <= 6)
+			{
+				config_hdd.id = (uint8_t) v;
+			}
+			return 1;
+		}
+		else if (strcmp(name, "file") == 0)
+		{
+			config_hdd.filename = strdup(value);
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
 	}
 	else
 	{
-		debug(DEBUG_CONFIG_NOT_FOUND);
-		// EEPROM data is not set, we must handle everything ourselves
-		data[CONFIG_OFFSET_FLAGS] = GLOBAL_CONFIG_DEFAULTS;
-		data[CONFIG_OFFSET_ID_HDD] = DEVICE_ID_HDD;
-		data[CONFIG_OFFSET_ID_LINK] = DEVICE_ID_LINK;
-		data[CONFIG_OFFSET_MAC] = NET_MAC_DEFAULT_ADDR_1;
-		data[CONFIG_OFFSET_MAC + 1] = NET_MAC_DEFAULT_ADDR_2;
-		data[CONFIG_OFFSET_MAC + 2] = NET_MAC_DEFAULT_ADDR_3;
-		data[CONFIG_OFFSET_MAC + 3] = NET_MAC_DEFAULT_ADDR_4;
-		data[CONFIG_OFFSET_MAC + 4] = NET_MAC_DEFAULT_ADDR_5;
-		data[CONFIG_OFFSET_MAC + 5] = NET_MAC_DEFAULT_ADDR_6;
+		return 0;
 	}
+}
+
+/*
+ * ============================================================================
+ *  
+ *   PUBLIC FUNCTIONS
+ * 
+ * ============================================================================
+ */
+
+CONFIG_RESULT config_read(void)
+{
+	// initialize GPIO
+	GLOBAL_CONFIG_REGISTER = 0x00;
+	
+	CONFIG_RESULT result = CONFIG_OK;
+
+	// open the file off the memory card
+	FRESULT res = pf_open("SCUZNET.INI");
+	if (res)
+	{
+		debug(DEBUG_CONFIG_FILE_MISSING);
+		return CONFIG_NOFILE;
+	}
+
+	/*
+	 * We use the nonstandard fdevopen() to handle wrapping the low-level block
+	 * reader. The position/length values are arbitrary to trigger a pf_read()
+	 * call during the first invocation.
+	 */
+	config_buffer = malloc(512);
+	config_position = 512;
+	config_length = 512;
+	FILE* fp = fdevopen(NULL, config_fetch); // open read-only to our handler
+	if (config_buffer != NULL && fp != NULL)
+	{
+		if (ini_parse_stream((ini_reader) fgets, fp, config_handler, NULL) < 0)
+		{
+			debug(DEBUG_CONFIG_FILE_MISSING);
+			result = CONFIG_NOLOAD;
+		}
+	}
+	else
+	{
+		debug(DEBUG_CONFIG_MEMORY_ERROR);
+		result = CONFIG_NOLOAD;
+	}
+
+	// clean up
+	fclose(fp);
+	free(config_buffer);
+	
+	return result;
 }

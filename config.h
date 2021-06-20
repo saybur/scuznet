@@ -25,8 +25,6 @@
 	#include "hw_v01.h"
 #elif defined(HW_V02)
 	#include "hw_v02.h"
-#elif defined(HW_DRV_V01)
-	#include "hw_drv_v01.h"
 #else
 	#error "You must define a hardware revision, like -DHW_V01"
 #endif
@@ -36,22 +34,26 @@
  * configuration.
  */
 
+typedef enum {
+	CONFIG_OK = 0,
+	CONFIG_NOFILE,
+	CONFIG_NOLOAD
+} CONFIG_RESULT;
+
 /*
  * ============================================================================
  *  
- *   CONFIGURATION DEFAULT VALUES
+ *   CONFIGURATION VALUES
  * 
  * ============================================================================
  * 
- * Most of these values should not be changed. Instead, refer to the program
- * documentation, which describes how the EEPROM may be used to change the
- * device's behavior.
+ * Declares the configuration information visible to other parts of the
+ * program. These should not be changed. To make modifications to the
+ * configuration, edit 'scuznet.ini' on the memory card.
  */
 
 /*
- * Defines the GPIO register used to store global device configuration. This is
- * loaded at startup with a default value unless EEPROM configuration has been
- * adjusted, in which case the value stored here will be the one from EEPROM.
+ * Defines the GPIO register used to store global device configuration flags.
  */
 #define GLOBAL_CONFIG_REGISTER  GPIOR1
 
@@ -61,7 +63,7 @@
  */
 #define GLOBAL_FLAG_PARITY      _BV(0)
 #define GLOBAL_FLAG_DEBUG       _BV(1)
-#define GLOBAL_CONFIG_DEFAULTS  GLOBAL_FLAG_PARITY
+#define GLOBAL_FLAG_VERBOSE     _BV(2)
 
 /*
  * The number of bus devices that we are able to support at the same time.
@@ -69,43 +71,22 @@
 #define LOGIC_DEVICE_COUNT      2
 
 /*
- * Defines the default "ROM" MAC address of the device used during startup, in 
- * MSB to LSB order, if a new one has not been written to EEPROM.
- * 
- * For the high byte, ensure that b0 is 0, and b1 is 1, to conform to the
- * standard MAC address requirements that this is not a multicast destination
- * and that this is a locally administered MAC address.
+ * The Ethernet controller configuration information.
  */
-#define NET_MAC_DEFAULT_ADDR_1  0x02
-#define NET_MAC_DEFAULT_ADDR_2  0x00
-#define NET_MAC_DEFAULT_ADDR_3  0x00
-#define NET_MAC_DEFAULT_ADDR_4  0xBE
-#define NET_MAC_DEFAULT_ADDR_5  0xEE
-#define NET_MAC_DEFAULT_ADDR_6  0xEF
+typedef struct ENETConfig_t {
+	uint8_t id;
+	uint8_t mac[6];
+} ENETConfig;
+extern ENETConfig config_enet;
 
 /*
- * Defines the default device IDs in the event that there is no configuration
- * data stored for this in EEPROM.
+ * The virtual hard drive configuration information.
  */
-#define DEVICE_ID_HDD           3
-#define DEVICE_ID_LINK          4
-
-/*
- * The EEPROM starting location, the length of the result array, and the value
- * used to determine if the EEPROM data is valid.
- */
-#define CONFIG_EEPROM_ADDR      0x00
-#define CONFIG_EEPROM_LENGTH    10
-#define CONFIG_EEPROM_VALIDITY  0xAA
-
-/*
- * The array offsets for EEPROM configuration information.
- */
-#define CONFIG_OFFSET_VALIDITY  0
-#define CONFIG_OFFSET_FLAGS     1
-#define CONFIG_OFFSET_ID_HDD    2
-#define CONFIG_OFFSET_ID_LINK   3
-#define CONFIG_OFFSET_MAC       4
+typedef struct HDDConfig_t {
+	uint8_t id;
+	char* filename;
+} HDDConfig;
+extern HDDConfig config_hdd;
 
 /*
  * ============================================================================
@@ -238,10 +219,11 @@
  */
 
 /*
- * Called to read the EEPROM configuration into the given array. This will
- * read the data, modify it appropriately to make sure it is valid, and store
- * it in the provided array.
+ * Reads SCUZNET.INI and inserts the configuration values into the global
+ * variables.
+ * 
+ * The volume must be mounted before this is invoked!
  */
-void config_read(uint8_t*);
+CONFIG_RESULT config_read(void);
 
 #endif /* CONFIG_H */

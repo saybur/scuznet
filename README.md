@@ -23,15 +23,16 @@ This implementation has some limitations by design:
 1. There must be only one initiator on the bus.
 2. The initiator on the bus must be at ID 7.
 3. Read parity is not used. Transmission parity is provided but may be disabled
-   to slightly improve performance.
+   to improve performance.
 
 These should not be a significant problem for the target computer platform,
 which for the most part has similar limitations.
 
 # Device Configuration
 
-See [SETTINGS.html](SETTINGS.html) for a description of firmware configuration
-options.
+The supplied memory card should be FAT32 formatted (exFAT is not currently
+supported). On boot the firmware will look for `scuznet.ini` on the card to
+configure itself. See the example file in the repository for more information.
 
 When compiling, verify that -DHW_VXXX in the Makefile is replaced with the
 appropriate hardware revision.

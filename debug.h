@@ -27,12 +27,14 @@
  * printf() of the embedded world. I should really get a proper debugging
  * rig at some point...
  */
-#define DEBUG_MAIN_MEM_INIT_FOLLOWS               0x10
-#define DEBUG_MAIN_ACTIVE_NO_TARGET               0x11
-#define DEBUG_MAIN_BAD_CSD_REQUEST                0x1A
-#define DEBUG_CONFIG_FOUND                        0x1D
-#define DEBUG_CONFIG_NOT_FOUND                    0x1E
-#define DEBUG_CONFIG_START                        0x1F
+#define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10
+#define DEBUG_CONFIG_FILE_MISSING                 0x11
+#define DEBUG_CONFIG_LOAD_FAILED                  0x12
+#define DEBUG_CONFIG_READ_ERROR                   0x13
+#define DEBUG_CONFIG_MEMORY_ERROR                 0x14
+#define DEBUG_CONFIG_SECTION                      0x1D
+#define DEBUG_CONFIG_NAME                         0x1E
+#define DEBUG_CONFIG_VALUE                        0x1F
 #define DEBUG_LOGIC_BAD_LUN                       0x50
 #define DEBUG_LOGIC_BAD_CMD                       0x52
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
@@ -90,6 +92,7 @@
 
 // alias for use below
 #define debug_enabled()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_DEBUG)
+#define debug_verbose()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_VERBOSE)
 
 #ifdef DEBUGGING
 static inline __attribute__((always_inline)) void debug(uint8_t v)

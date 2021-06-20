@@ -188,10 +188,16 @@ static void hdd_read(uint8_t* cmd)
 
 	if (op.length > 0)
 	{
-		debug(DEBUG_HDD_READ_STARTING);
-		debug_dual(
-						(uint8_t) (op.length >> 8),
-						(uint8_t) op.length);
+		if (debug_enabled())
+		{
+			debug(DEBUG_HDD_READ_STARTING);
+			if (debug_verbose())
+			{
+				debug_dual(
+					(uint8_t) (op.length >> 8),
+					(uint8_t) op.length);
+			}
+		}
 		phy_phase(PHY_PHASE_DATA_IN);
 		
 		// move to correct sector
@@ -236,10 +242,16 @@ static void hdd_read(uint8_t* cmd)
 		res = pf_mread(phy_data_offer_bulk, op.length, &act_len);
 		if (res || act_len != op.length)
 		{
-			debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
-			debug_dual(
-					(uint8_t) (act_len >> 8),
-					(uint8_t) act_len);
+			if (debug_enabled())
+			{
+				debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
+				if (debug_verbose())
+				{
+					debug_dual(
+						(uint8_t) (act_len >> 8),
+						(uint8_t) act_len);
+				}
+			}
 			hdd_error = 1;
 			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
 					SENSE_DATA_NO_INFORMATION);
@@ -280,10 +292,16 @@ static void hdd_write(uint8_t* cmd)
 
 	if (op.length > 0)
 	{
-		debug(DEBUG_HDD_WRITE_STARTING);
-		debug_dual(
-						(uint8_t) (op.length >> 8),
-						(uint8_t) op.length);
+		if (debug_enabled())
+		{
+			debug(DEBUG_HDD_WRITE_STARTING);
+			if (debug_verbose())
+			{
+				debug_dual(
+					(uint8_t) (op.length >> 8),
+					(uint8_t) op.length);
+			}
+		}
 		phy_phase(PHY_PHASE_DATA_OUT);
 
 		// move to correct sector
@@ -303,10 +321,16 @@ static void hdd_write(uint8_t* cmd)
 		res = pf_mwrite(phy_data_ask_bulk, op.length, &act_len);
 		if (res || act_len != op.length)
 		{
-			debug_dual(DEBUG_HDD_MEM_WRITE_ERROR, res);
-			debug_dual(
-					(uint8_t) (act_len >> 8),
-					(uint8_t) act_len);
+			if (debug_enabled())
+			{
+				debug_dual(DEBUG_HDD_MEM_WRITE_ERROR, res);
+				if (debug_verbose())
+				{
+					debug_dual(
+						(uint8_t) (act_len >> 8),
+						(uint8_t) act_len);
+				}
+			}
 			hdd_error = 1;
 			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
 					SENSE_DATA_NO_INFORMATION);

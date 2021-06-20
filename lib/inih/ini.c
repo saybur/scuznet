@@ -247,7 +247,7 @@ int ini_parse_file(FILE* file, ini_handler handler, void* user)
 }
 
 /* See documentation in header file. */
-int ini_parse(const char* filename, ini_handler handler, void* user)
+/*int ini_parse(const char* filename, ini_handler handler, void* user)
 {
     FILE* file;
     int error;
@@ -258,7 +258,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user)
     error = ini_parse_file(file, handler, user);
     fclose(file);
     return error;
-}
+}*/
 
 /* An ini_reader function to read the next line from a string buffer. This
    is the fgets() equivalent used by ini_parse_string(). */

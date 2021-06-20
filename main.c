@@ -17,6 +17,7 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <avr/io.h>
 #include <util/delay.h>
 #include "lib/pff/pff.h"
@@ -86,28 +87,7 @@ int main(void)
 		}
 	}
 
-	// read device configuration and assign values we need from it
-	uint8_t device_config[CONFIG_EEPROM_LENGTH];
-	config_read(device_config);
-	GLOBAL_CONFIG_REGISTER = device_config[CONFIG_OFFSET_FLAGS];
-	hdd_mask = 1 << device_config[CONFIG_OFFSET_ID_HDD];
-	link_mask = 1 << device_config[CONFIG_OFFSET_ID_LINK];
-
-	// print the configuration out if requested
-	#ifdef DEBUGGING
-	debug(DEBUG_CONFIG_START);
-	for (uint8_t i = 0; i < CONFIG_EEPROM_LENGTH; i++)
-	{
-		debug(device_config[i]);
-	}
-	#endif
-
-	phy_init(hdd_mask | link_mask);
-	net_setup(device_config + CONFIG_OFFSET_MAC);
-	link_init(device_config + CONFIG_OFFSET_MAC, link_mask);
-	phy_init_hold();
-
-	// setup virtual hard drives (TEST CODE)
+	// mount the memory card
 	uint8_t res = pf_mount(&fs);
 	if (res)
 	{
@@ -119,15 +99,51 @@ int main(void)
 			_delay_ms(1000);
 		}
 	}
-	res = pf_open("0.IMG");
-	if (res)
+
+	// attempt to read the main configuration file off the card
+	CONFIG_RESULT cres = config_read();
+	if (cres)
 	{
 		while (1)
 		{
 			led_on();
-			_delay_ms(250);
+			_delay_ms(100);
 			led_off();
-			_delay_ms(250);
+			_delay_ms(100);
+		}
+	}
+
+	// set the masks appropriately
+	if (config_enet.id < 7)
+	{
+		link_mask = 1 << config_enet.id;
+	}
+	if (config_hdd.id != config_enet.id
+			&& config_hdd.id < 7
+			&& config_hdd.filename != NULL)
+	{
+		hdd_mask = 1 << config_hdd.id;
+	}
+
+	// complete setup
+	phy_init(hdd_mask | link_mask);
+	net_setup(config_enet.mac);
+	link_init(config_enet.mac, link_mask);
+	phy_init_hold();
+
+	// mount hard drive volume
+	if (hdd_mask != 0)
+	{
+		res = pf_open(config_hdd.filename);
+		if (res)
+		{
+			while (1)
+			{
+				led_on();
+				_delay_ms(250);
+				led_off();
+				_delay_ms(250);
+			}
 		}
 	}
 	hdd_set_ready(1024000); // 500MB in 512 byte sectors
