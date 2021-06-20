@@ -137,6 +137,7 @@ int main(void)
 		res = pf_open(config_hdd.filename);
 		if (res)
 		{
+			debug(DEBUG_HDD_MOUNT_FAILED);
 			while (1)
 			{
 				led_on();
@@ -145,8 +146,27 @@ int main(void)
 				_delay_ms(250);
 			}
 		}
+		
+		uint32_t size;
+		res = pf_size(&size);
+		if (res)
+		{
+			debug(DEBUG_HDD_SIZE_FAILED);
+			while (1)
+			{
+				led_on();
+				_delay_ms(250);
+				led_off();
+				_delay_ms(250);
+			}
+		}
+		size >>= 9; // in 512 byte sectors
+		if (size > 0)
+		{
+			hdd_set_ready(size);
+		}
 	}
-	hdd_set_ready(1024000); // 500MB in 512 byte sectors
+	
 	
 	led_off();
 

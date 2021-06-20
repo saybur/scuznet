@@ -32,9 +32,6 @@
 #define DEBUG_CONFIG_LOAD_FAILED                  0x12
 #define DEBUG_CONFIG_READ_ERROR                   0x13
 #define DEBUG_CONFIG_MEMORY_ERROR                 0x14
-#define DEBUG_CONFIG_SECTION                      0x1D
-#define DEBUG_CONFIG_NAME                         0x1E
-#define DEBUG_CONFIG_VALUE                        0x1F
 #define DEBUG_LOGIC_BAD_LUN                       0x50
 #define DEBUG_LOGIC_BAD_CMD                       0x52
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
@@ -61,6 +58,8 @@
 #define DEBUG_HDD_MEM_READ_ERROR                  0x92
 #define DEBUG_HDD_MEM_WRITE_ERROR                 0x93
 #define DEBUG_HDD_INVALID_OPERATION               0x94
+#define DEBUG_HDD_MOUNT_FAILED                    0x95
+#define DEBUG_HDD_SIZE_FAILED                     0x96
 #define DEBUG_LINK_TX_REQUESTED                   0xA0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5

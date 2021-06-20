@@ -42,7 +42,7 @@ This allows a percentage of the read/write time to be occupied by handling
 data, and maximizes use of the multi-sector read and write commands that are
 critical for maintaining decent performance with modern memory cards.
 
-The two functions added are:
+The two functions added that support this are:
 
 ```
 FRESULT pf_mread (UINT (*func)(BYTE*,UINT), UINT str, UINT* sr);
@@ -57,3 +57,12 @@ do not match there was an error of some kind.
 
 These calls error out with `FR_NOT_ON_SECTOR` if the file pointer is not on a
 sector boundary when they are invoked.
+
+One additional support function has also been added:
+
+```
+FRESULT pf_size (DWORD* sr);
+```
+
+This supplies the size of the currently open file, in bytes. If no file is open
+this will return an error.
