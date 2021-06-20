@@ -33,9 +33,6 @@
 #define DEBUG_CONFIG_FOUND                        0x1D
 #define DEBUG_CONFIG_NOT_FOUND                    0x1E
 #define DEBUG_CONFIG_START                        0x1F
-#define DEBUG_MEM_NOT_READY                       0x20
-#define DEBUG_MEM_CMD_REJECTED                    0x21
-#define DEBUG_MEM_BAD_DATA_TOKEN                  0x22
 #define DEBUG_LOGIC_BAD_LUN                       0x50
 #define DEBUG_LOGIC_BAD_CMD                       0x52
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
@@ -80,6 +77,10 @@
 #define DEBUG_PHY_RESELECT_ARB_WON                0xD3
 #define DEBUG_PHY_RESELECT_ARB_INTERRUPTED        0xD4
 #define DEBUG_PHY_RESELECT_FINISHED               0xD5
+#define DEBUG_MEM_READ_SINGLE_FAILED              0xE0
+#define DEBUG_MEM_READ_MUL_CMD_FAILED             0xE1
+#define DEBUG_MEM_READ_MUL_BLOCK_FAILED           0xE2
+#define DEBUG_MEM_READ_MUL_CALL_FAILED            0xE3
 
 // LED control macros
 #define led_on()              LED_PORT.DIR |= LED_PIN;

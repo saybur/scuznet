@@ -1017,13 +1017,16 @@ FRESULT pf_mread (
 		}
 
 		// perform read operation
-		uint8_t buf[512];
+/*		uint8_t buf[512];
 		for (uint16_t i = 0; i < cc; i++)
 		{
 			if (disk_readp(buf, sect + cs + i, 0, 512)) ABORT(FR_DISK_ERR);
 			if (func(buf, 512) != 512) ABORT(FR_NOT_READY);
 			fs->fptr += 512;
 		}
+*/
+		if (disk_read_multi(func, sect + cs, cc)) ABORT(FR_DISK_ERR);
+		fs->fptr += cc * 512;
 
 		// update pointers and counters
 		str -= cc;

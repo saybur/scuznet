@@ -425,14 +425,72 @@ DRESULT disk_readp(
 	return res;
 }
 
+#include "debug.h"
+
 DRESULT disk_read_multi (
 	UINT (*func)(BYTE*,UINT),
 	DWORD sector,
 	UINT count
 )
 {
-	// TODO implement
-	return RES_NOTRDY;
+	DRESULT res = RES_OK;
+
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	if (! count) return RES_PARERR;
+	
+	if (! (card_type & CT_BLOCK)) sector *= 512;
+	if (count == 1)
+	{
+		// we treat single-sector reads like a normal FIFO call
+		void* buff = malloc(512);
+		if (buff != NULL
+				&& mem_cmd(CMD17, sector) == 0
+				&& mem_bulk_read(buff, 0, 512)
+				&& func(buff, 512) == 512)
+		{
+			count = 0;
+		}
+		else
+		{
+			debug(DEBUG_MEM_READ_SINGLE_FAILED);
+			res = RES_ERROR;
+		}
+		free(buff);
+	}
+	else
+	{
+		void* buff = malloc(512);
+		uint8_t cmdres = mem_cmd(CMD18, sector);
+		if (buff != NULL && cmdres == 0)
+		{
+			do
+			{
+				if (! mem_bulk_read(buff, 0, 512))
+				{
+					debug(DEBUG_MEM_READ_MUL_BLOCK_FAILED);
+					res = RES_ERROR;
+					break;
+				}
+				if (func(buff, 512) != 512)
+				{
+					debug(DEBUG_MEM_READ_MUL_CALL_FAILED);
+					res = RES_ERROR;
+				}
+			}
+			while ((! res) && --count);
+			mem_cmd(CMD12, 0);
+		}
+		else
+		{
+			debug(DEBUG_MEM_READ_MUL_CMD_FAILED);
+			debug(cmdres);
+			res = RES_ERROR;
+		}
+		free(buff);
+	}
+	mem_deselect();
+
+	return res;
 }
 
 #if PF_USE_WRITE
@@ -541,6 +599,8 @@ DRESULT disk_write_multi (
 		if (card_type & CT_SDC) mem_cmd(ACMD23, count);
 		if (mem_cmd(CMD25, sector) == 0)
 		{
+			// http://elm-chan.org/docs/mmc/mmc_e.html#dataxfer
+			// diagram indicates need to have at least 1 byte before data
 			mem_send(0xFF);
 						
 			// TODO verify malloc() does not fail

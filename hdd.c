@@ -189,16 +189,9 @@ static void hdd_read(uint8_t* cmd)
 	if (op.length > 0)
 	{
 		debug(DEBUG_HDD_READ_STARTING);
-		// TODO should probably add a verbose option
 		debug_dual(
 						(uint8_t) (op.length >> 8),
 						(uint8_t) op.length);
-		debug_dual(
-						(uint8_t) (op.lba >> 24),
-						(uint8_t) (op.lba >> 16));
-		debug_dual(
-						(uint8_t) (op.lba >> 8),
-						(uint8_t) op.lba);
 		phy_phase(PHY_PHASE_DATA_IN);
 		
 		// move to correct sector
@@ -291,12 +284,6 @@ static void hdd_write(uint8_t* cmd)
 		debug_dual(
 						(uint8_t) (op.length >> 8),
 						(uint8_t) op.length);
-		debug_dual(
-						(uint8_t) (op.lba >> 24),
-						(uint8_t) (op.lba >> 16));
-		debug_dual(
-						(uint8_t) (op.lba >> 8),
-						(uint8_t) op.lba);
 		phy_phase(PHY_PHASE_DATA_OUT);
 
 		// move to correct sector
