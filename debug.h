@@ -79,8 +79,10 @@
 #define DEBUG_PHY_RESELECT_FINISHED               0xD5
 #define DEBUG_MEM_READ_SINGLE_FAILED              0xE0
 #define DEBUG_MEM_READ_MUL_CMD_FAILED             0xE1
-#define DEBUG_MEM_READ_MUL_BLOCK_FAILED           0xE2
-#define DEBUG_MEM_READ_MUL_CALL_FAILED            0xE3
+#define DEBUG_MEM_READ_MUL_FIRST_FAILED           0xE2
+#define DEBUG_MEM_READ_MUL_TIMEOUT                0xE3
+#define DEBUG_MEM_READ_MUL_FUNC_ERR               0xE4
+#define DEBUG_MEM_READ_MUL_DMA_ERR                0xE5
 
 // LED control macros
 #define led_on()              LED_PORT.DIR |= LED_PIN;

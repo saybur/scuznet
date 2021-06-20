@@ -459,26 +459,107 @@ DRESULT disk_read_multi (
 	}
 	else
 	{
-		void* buff = malloc(512);
+		void* buff_a = malloc(514);
+		void* buff_b = malloc(514);
 		uint8_t cmdres = mem_cmd(CMD18, sector);
-		if (buff != NULL && cmdres == 0)
+		if (buff_a != NULL && buff_b != NULL && cmdres == 0)
 		{
-			do
+			uint8_t bufsel = 0;
+			uint8_t* cbuf = buff_a;
+			uint8_t* dbuf = buff_b;
+			MEM_GPIOR = 0xFF;
+			
+			// setup the parts of DMA that are consistent throughout
+			ATOMIC_BLOCK(ATOMIC_FORCEON)
 			{
-				if (! mem_bulk_read(buff, 0, 512))
+				MEM_DMA_WRITE.SRCADDR0 = (uint8_t) ((uint16_t) &MEM_GPIOR);
+				MEM_DMA_WRITE.SRCADDR1 = (uint8_t) (((uint16_t) (&MEM_GPIOR)) >> 8);
+				MEM_DMA_WRITE.SRCADDR2 = 0;
+			}
+			MEM_DMA_WRITE.TRFCNT = 514;
+			MEM_DMA_WRITE.ADDRCTRL = 0;
+			MEM_DMA_READ.TRFCNT = 514;
+			MEM_DMA_READ.ADDRCTRL = DMA_CH_DESTDIR_INC_gc;
+			
+			// directly read the first block
+			if (! mem_bulk_read(buff_a, 0, 512))
+			{
+				debug(DEBUG_MEM_READ_MUL_FIRST_FAILED);
+				res = RES_ERROR;
+			}
+			
+			// cycle (count - 1) total times; we do +1 transfer at end
+			while ((! res) && --count)
+			{
+				// swap between buffers
+				if (bufsel)
 				{
-					debug(DEBUG_MEM_READ_MUL_BLOCK_FAILED);
+					cbuf = buff_a;
+					dbuf = buff_b;
+				}
+				else
+				{
+					cbuf = buff_b;
+					dbuf = buff_a;
+				}
+				bufsel = !bufsel;
+				
+				// setup DMA on the empty current buffer
+				ATOMIC_BLOCK(ATOMIC_FORCEON)
+				{
+					MEM_DMA_READ.DESTADDR0 = (uint8_t) ((uint16_t) cbuf);
+					MEM_DMA_READ.DESTADDR1 = ((uint16_t) cbuf) >> 8;
+					MEM_DMA_READ.DESTADDR2 = 0;
+				}
+				
+				// wait for the card to become ready
+				uint8_t token;
+				mem_setup_timeout(200);
+				do
+				{
+					token = mem_send(0xFF);
+				}
+				while (token == 0xFF && (! mem_timed_out()));
+				if (token != 0xFE)
+				{
+					debug_dual(DEBUG_MEM_READ_MUL_TIMEOUT, token);
 					res = RES_ERROR;
 					break;
 				}
-				if (func(buff, 512) != 512)
+				
+				// execute the DMA operation
+				MEM_DMA_READ.CTRLA |= DMA_CH_ENABLE_bm;
+				MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
+
+				// send the data buffer to the computer
+				if (func(dbuf, 512) != 512)
 				{
-					debug(DEBUG_MEM_READ_MUL_CALL_FAILED);
+					debug(DEBUG_MEM_READ_MUL_FUNC_ERR);
+					res = RES_ERROR;
+				}
+				
+				// wait for the DMA transaction to finish
+				while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
+				if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm)
+				{
+					debug(DEBUG_MEM_READ_MUL_DMA_ERR);
+					res = RES_ERROR;
+					break;
+				}
+			}
+
+			// terminate operation regardless, and ignore response
+			mem_cmd(CMD12, 0);
+			
+			// send the last sector to the computer if valid
+			if (! res)
+			{
+				if (func(cbuf, 512) != 512)
+				{
+					debug(DEBUG_MEM_READ_MUL_FUNC_ERR);
 					res = RES_ERROR;
 				}
 			}
-			while ((! res) && --count);
-			mem_cmd(CMD12, 0);
 		}
 		else
 		{
@@ -486,7 +567,10 @@ DRESULT disk_read_multi (
 			debug(cmdres);
 			res = RES_ERROR;
 		}
-		free(buff);
+
+		// clean up
+		free(buff_a);
+		free(buff_b);
 	}
 	mem_deselect();
 
