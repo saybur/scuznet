@@ -928,7 +928,7 @@ ISR(PHY_CTRL_IN_INT1_vect)
 		dclk_fall();
 		uint8_t raw = PHY_PORT_DATA_IN.IN;
 		doe_off();
-		raw = raw & 0xFE;
+		raw = raw & 0xFE; // note: owned masks is pre-reversed as needed
 		if (raw & owned_masks)
 		{
 			/*
