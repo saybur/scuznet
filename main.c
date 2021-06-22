@@ -31,29 +31,39 @@
 #include "net.h"
 #include "phy.h"
 
-static uint8_t hdd_mask;
-static uint8_t link_mask;
 static FATFS fs;
 
 static void main_handle(void)
 {
 	if (phy_is_active())
 	{
+		uint8_t searching = 1;
+
 		led_on();
 		uint8_t target = phy_get_target();
-		if (target == hdd_mask)
+		if (target == config_enet.mask)
 		{
-			hdd_main();
-		}
-		else if (target == link_mask)
-		{
+			searching = 0;
 			link_main();
 		}
-		else
+		for (uint8_t i = 0; i < HARD_DRIVE_COUNT && searching; i++)
+		{
+			if (target == config_hdd[i].mask)
+			{
+				searching = 0;
+				if (hdd_main(i))
+				{
+					searching = 1;
+				}
+			}
+		}
+
+		if (searching)
 		{
 			debug_dual(DEBUG_MAIN_ACTIVE_NO_TARGET, phy_get_target());
 			logic_done();
 		}
+
 		led_off();
 	}
 
@@ -101,7 +111,8 @@ int main(void)
 	}
 
 	// attempt to read the main configuration file off the card
-	CONFIG_RESULT cres = config_read();
+	uint8_t target_masks;
+	CONFIG_RESULT cres = config_read(&target_masks);
 	if (cres)
 	{
 		while (1)
@@ -113,60 +124,25 @@ int main(void)
 		}
 	}
 
-	// set the masks appropriately
-	if (config_enet.id < 7)
-	{
-		link_mask = 1 << config_enet.id;
-	}
-	if (config_hdd.id != config_enet.id
-			&& config_hdd.id < 7
-			&& config_hdd.filename != NULL)
-	{
-		hdd_mask = 1 << config_hdd.id;
-	}
-
 	// complete setup
-	phy_init(hdd_mask | link_mask);
-	net_setup(config_enet.mac);
-	link_init(config_enet.mac, link_mask);
-	phy_init_hold();
-
-	// mount hard drive volume
-	if (hdd_mask != 0)
+	phy_init(target_masks);
+	if (config_enet.id != 255)
 	{
-		res = pf_open(config_hdd.filename);
-		if (res)
+		// only enable networking if asked
+		net_setup(config_enet.mac);
+		link_init(config_enet.mac, config_enet.mask);
+	}
+	if (! hdd_init())
+	{
+		while (1)
 		{
-			debug(DEBUG_HDD_MOUNT_FAILED);
-			while (1)
-			{
-				led_on();
-				_delay_ms(250);
-				led_off();
-				_delay_ms(250);
-			}
-		}
-		
-		uint32_t size;
-		res = pf_size(&size);
-		if (res)
-		{
-			debug(DEBUG_HDD_SIZE_FAILED);
-			while (1)
-			{
-				led_on();
-				_delay_ms(250);
-				led_off();
-				_delay_ms(250);
-			}
-		}
-		size >>= 9; // in 512 byte sectors
-		if (size > 0)
-		{
-			hdd_set_ready(size);
+			led_on();
+			_delay_ms(250);
+			led_off();
+			_delay_ms(250);
 		}
 	}
-	
+	phy_init_hold();
 	
 	led_off();
 

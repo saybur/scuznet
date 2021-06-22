@@ -470,7 +470,7 @@ void link_main(void)
 		 * insert various waits to make sure we don't get too far ahead of it.
 		 */
 		debug(DEBUG_LINK_RX_STARTING);
-		logic_start(1, 0);
+		logic_start(0, 0);
 
 		/*
 		 * We have reselected the initiator. First step is MESSAGE OUT. This
@@ -525,7 +525,7 @@ void link_main(void)
 	else
 	{
 		// normal selection by initiator
-		logic_start(1, 1);
+		logic_start(0, 1);
 		uint8_t cmd[10];
 		if (! logic_command(cmd)) return;
 

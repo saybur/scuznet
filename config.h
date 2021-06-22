@@ -66,15 +66,16 @@ typedef enum {
 #define GLOBAL_FLAG_VERBOSE     _BV(2)
 
 /*
- * The number of bus devices that we are able to support at the same time.
+ * The number of virtual hard drives that can be supported simultaneously.
  */
-#define LOGIC_DEVICE_COUNT      2
+#define HARD_DRIVE_COUNT        4
 
 /*
  * The Ethernet controller configuration information.
  */
 typedef struct ENETConfig_t {
-	uint8_t id;
+	uint8_t id;                 // disabled when set to 255
+	uint8_t mask;				// the bitmask for the above ID
 	uint8_t mac[6];
 } ENETConfig;
 extern ENETConfig config_enet;
@@ -83,10 +84,12 @@ extern ENETConfig config_enet;
  * The virtual hard drive configuration information.
  */
 typedef struct HDDConfig_t {
-	uint8_t id;
+	uint8_t id;                 // disabled when set to 255
+	uint8_t mask;				// the bitmask for the above ID
 	char* filename;
+	uint32_t size;
 } HDDConfig;
-extern HDDConfig config_hdd;
+extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 /*
  * ============================================================================
@@ -220,10 +223,11 @@ extern HDDConfig config_hdd;
 
 /*
  * Reads SCUZNET.INI and inserts the configuration values into the global
- * variables.
+ * variables. This returns the logical OR of the target masks in the provided
+ * pointer.
  * 
  * The volume must be mounted before this is invoked!
  */
-CONFIG_RESULT config_read(void);
+CONFIG_RESULT config_read(uint8_t*);
 
 #endif /* CONFIG_H */

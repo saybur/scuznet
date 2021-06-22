@@ -48,11 +48,12 @@
  */
 
 /*
- * Called when the memory card has been detected and is ready to go. This
- * should be provided with the number of 512 byte blocks the card has been
- * detected as having.
+ * Called when the memory card has been mounted and is ready to go. This
+ * will read the configuration information and set itself up appropriately.
+ * 
+ * Returns true when successful, false otherwise.
  */
-void hdd_set_ready(uint32_t);
+uint8_t hdd_init(void);
 
 /*
  * Provides whether or not the memory card has experienced a major error.
@@ -68,7 +69,13 @@ uint8_t hdd_has_error(void);
 /*
  * Called whenever the PHY detects that the hard drive has been selected. This
  * will proceed through the bus phases as needed.
+ * 
+ * Should be provided with the ID of the hard drive from the HDD configuration
+ * array.
+ * 
+ * If this returns false, it indicates an error that did not result in hanging
+ * up the bus. The caller needs to resolve that condition.
  */
-void hdd_main(void);
+uint8_t hdd_main(uint8_t);
 
 #endif /* HDD_H */

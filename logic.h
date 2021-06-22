@@ -78,6 +78,11 @@ typedef struct LogicDataOp_t {
 extern LogicDataOp logic_data;
 
 /*
+ * The number of devices this expects.
+ */
+#define LOGIC_DEVICE_COUNT              (HARD_DRIVE_COUNT + 1)
+
+/*
  * The MESSAGE types that are of interest by this device, in addition to 
  * IDENTIFY messages in the 0x80-0xFF range. For specific messages supported
  * during MESSAGE OUT, refer to that section of the logic code.

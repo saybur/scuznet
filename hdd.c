@@ -17,6 +17,7 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <avr/pgmspace.h>
 #include <util/delay.h>
 #include "lib/pff/pff.h"
@@ -89,7 +90,20 @@ static void hdd_inquiry(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_read_capacity(uint8_t* cmd)
+static void hdd_set_capacity(uint8_t hdd_id)
+{
+	/*
+	 * We strip off the low 12 bits to conform with the sizing reported by the
+	 * rigid disk geometry page in MODE SENSE.
+	 */
+	uint32_t sectors = config_hdd[hdd_id].size;
+	capacity_data[0] = (uint8_t) (sectors >> 24);
+	capacity_data[1] = (uint8_t) (sectors >> 16);
+	capacity_data[2] = (uint8_t) ((sectors >> 8) & 0xF0);
+	capacity_data[3] = 0;
+}
+
+static void hdd_read_capacity(uint8_t hdd_id, uint8_t* cmd)
 {
 	if (cmd[1] & 1)
 	{
@@ -98,6 +112,7 @@ static void hdd_read_capacity(uint8_t* cmd)
 	}
 	else
 	{
+		hdd_set_capacity(hdd_id);
 		logic_data_in(capacity_data, 8);
 		logic_status(LOGIC_STATUS_GOOD);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -162,7 +177,7 @@ static void hdd_format(uint8_t* cmd)
 	}
 }
 
-static void hdd_read(uint8_t* cmd)
+static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 {
 	uint8_t res;
 	uint16_t act_len;
@@ -183,6 +198,29 @@ static void hdd_read(uint8_t* cmd)
 		debug(DEBUG_HDD_INVALID_OPERATION);
 		hdd_error = 1;
 		logic_cmd_illegal_arg(op.invalid - 1);
+		return;
+	}
+
+	if (config_hdd[hdd_id].filename != NULL)
+	{
+		res = pf_open(config_hdd[hdd_id].filename);
+		if (res)
+		{
+			debug(DEBUG_HDD_FOPEN_FAILED);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+			return;
+		}
+	}
+	else
+	{
+		debug(DEBUG_HDD_INVALID_FILE);
+		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return;
 	}
 
@@ -213,31 +251,6 @@ static void hdd_read(uint8_t* cmd)
 			return;
 		}
 
-/*
-		// transfer requested data
-		for (uint16_t i = 0; i < op.length; i++)
-		{
-			// read sector
-			res = pf_read(buffer, 512, &act_len);
-			if (res || act_len != 512)
-			{
-				debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
-				debug_dual(
-						(uint8_t) (act_len >> 8),
-						(uint8_t) act_len);
-				hdd_error = 1;
-				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-						SENSE_DATA_NO_INFORMATION);
-				logic_status(LOGIC_STATUS_CHECK_CONDITION);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				return;
-			}
-
-			// send to initiator
-			phy_data_offer_bulk(buffer, 512);
-		}
-*/
-
 		// read from card
 		res = pf_mread(phy_data_offer_bulk, op.length, &act_len);
 		if (res || act_len != op.length)
@@ -266,7 +279,7 @@ static void hdd_read(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_write(uint8_t* cmd)
+static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 {
 	uint8_t res;
 	uint16_t act_len;
@@ -288,6 +301,25 @@ static void hdd_write(uint8_t* cmd)
 		hdd_error = 1;
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
+	}
+
+	if (config_hdd[hdd_id].filename != NULL)
+	{
+		res = pf_open(config_hdd[hdd_id].filename);
+		if (res)
+		{
+			debug(DEBUG_HDD_FOPEN_FAILED);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+			return;
+		}
+	}
+	else
+	{
+		
 	}
 
 	if (op.length > 0)
@@ -345,7 +377,7 @@ static void hdd_write(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_mode_sense(uint8_t* cmd)
+static void hdd_mode_sense(uint8_t hdd_id, uint8_t* cmd)
 {
 	if (! hdd_ready)
 	{
@@ -547,6 +579,7 @@ static void hdd_mode_sense(uint8_t* cmd)
 		 * volume capacity. With a fixed 512 byte sector size, this allows
 		 * incrementing in 4096 block steps, or 2MB each.
 		 */
+		hdd_set_capacity(hdd_id);
 		cyl[0] = capacity_data[0] >> 4;
 		cyl[1] = (capacity_data[0] << 4) | (capacity_data[1] >> 4);
 		cyl[2] = (capacity_data[1] << 4) | (capacity_data[2] >> 4);
@@ -810,18 +843,41 @@ static void hdd_mode_select(uint8_t* cmd)
  * ============================================================================
  */
 
-void hdd_set_ready(uint32_t blocks)
+uint8_t hdd_init(void)
 {
-	/*
-	 * We strip off the low 12 bits to conform with the sizing reported by the
-	 * rigid disk geometry page in MODE SENSE.
-	 */
-	capacity_data[0] = (uint8_t) (blocks >> 24);
-	capacity_data[1] = (uint8_t) (blocks >> 16);
-	capacity_data[2] = (uint8_t) ((blocks >> 8) & 0xF0);
-	capacity_data[3] = 0;
-	hdd_ready = 1;
+	FRESULT res;
+	
+	// TODO: this is currently unused, which is bad
 	hdd_error = 0;
+
+	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
+	{
+		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
+		{
+			res = pf_open(config_hdd[i].filename);
+			if (res)
+			{
+				debug(DEBUG_HDD_MOUNT_FAILED);
+				return 0;
+			}
+			
+			uint32_t size;
+			res = pf_size(&size);
+			if (res)
+			{
+				debug(DEBUG_HDD_SIZE_FAILED);
+				return 0;
+			}
+			size >>= 9; // in 512 byte sectors
+			if (size > 0)
+			{
+				config_hdd[i].size = size;
+			}
+		}
+	}
+	
+	hdd_ready = 1;
+	return 1;
 }
 
 uint8_t hdd_has_error(void)
@@ -829,13 +885,16 @@ uint8_t hdd_has_error(void)
 	return hdd_error;
 }
 
-void hdd_main(void)
+uint8_t hdd_main(uint8_t hdd_id)
 {
-	if (! logic_ready()) return;
-	logic_start(0, 1);
+	if (! logic_ready()) return 0;
+	if (hdd_id >= HARD_DRIVE_COUNT) return 0;
+	if (config_hdd[hdd_id].id == 255) return 0;
+	
+	logic_start(hdd_id + 1, 1); // logic ID 0 for the link device, hence +1
 
 	uint8_t cmd[10];
-	if (! logic_command(cmd)) return;
+	if (! logic_command(cmd)) return 1; // this disconnects on failure
 
 	switch (cmd[0])
 	{
@@ -847,10 +906,10 @@ void hdd_main(void)
 			break;
 		case 0x08: // READ(6)
 		case 0x28: // READ(10)
-			hdd_read(cmd);
+			hdd_read(hdd_id, cmd);
 			break;
 		case 0x25: // READ CAPACITY
-			hdd_read_capacity(cmd);
+			hdd_read_capacity(hdd_id, cmd);
 			break;
 		case 0x17: // RELEASE
 			logic_status(LOGIC_STATUS_GOOD);
@@ -871,11 +930,11 @@ void hdd_main(void)
 			break;
 		case 0x0A: // WRITE(6)
 		case 0x2A: // WRITE(10)
-			hdd_write(cmd);
+			hdd_write(hdd_id, cmd);
 			break;
 		case 0x1A: // MODE SENSE(6)
 		case 0x5A: // MODE SENSE(10)
-			hdd_mode_sense(cmd);
+			hdd_mode_sense(hdd_id, cmd);
 			break;
 		case 0x15: // MODE SELECT(6)
 			hdd_mode_select(cmd);
@@ -893,4 +952,5 @@ void hdd_main(void)
 			logic_cmd_illegal_op();
 	}
 	logic_done();
+	return 1;
 }

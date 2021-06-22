@@ -25,8 +25,8 @@
 #include "config.h"
 #include "debug.h"
 
-ENETConfig config_enet = { 255, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
-HDDConfig config_hdd = { 255, NULL };
+ENETConfig config_enet = { 255, 0, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
+HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 static char* config_buffer;
 static uint16_t config_position;
@@ -130,20 +130,34 @@ static int config_handler(
 			return 0;
 		}
 	}
-	else if (strcmp(section, "hdd") == 0)
+	else if (strncmp(section, "hdd", 3) == 0) // starts with "hdd"?
 	{
+		uint8_t hddsel;
+		switch (strlen(section))
+		{
+			case 3: // special case: "hdd" is really "hdd1"
+				hddsel = 0;
+				break;
+			case 4: // "hddX"
+				hddsel = section[3] - '1';
+				break;
+			default:
+				hddsel = 255;
+		}
+		if (hddsel > HARD_DRIVE_COUNT) return 0;
+
 		if (strcmp(name, "id") == 0)
 		{
 			int v = atoi(value);
 			if (v >= 0 && v <= 6)
 			{
-				config_hdd.id = (uint8_t) v;
+				config_hdd[hddsel].id = (uint8_t) v;
 			}
 			return 1;
 		}
 		else if (strcmp(name, "file") == 0)
 		{
-			config_hdd.filename = strdup(value);
+			config_hdd[hddsel].filename = strdup(value);
 			return 1;
 		}
 		else
@@ -165,11 +179,18 @@ static int config_handler(
  * ============================================================================
  */
 
-CONFIG_RESULT config_read(void)
+CONFIG_RESULT config_read(uint8_t* target_masks)
 {
-	// initialize GPIO
+	// initialize GPIO and hard drive structs
 	GLOBAL_CONFIG_REGISTER = 0x00;
+	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
+	{
+		config_hdd[i].id = 255;
+		config_hdd[i].filename = NULL;
+		config_hdd[i].size = 0;
+	}
 	
+	*target_masks = 0;
 	CONFIG_RESULT result = CONFIG_OK;
 
 	// open the file off the memory card
@@ -202,6 +223,46 @@ CONFIG_RESULT config_read(void)
 		debug(DEBUG_CONFIG_MEMORY_ERROR);
 		result = CONFIG_NOLOAD;
 	}
+
+	/*
+	 * Calculate the PHY masks requested from the configuration file, and
+	 * finish configuring the hard drives based on the requested values.
+	 */
+	uint8_t used_masks = 0x80; // reserve ID 7 for initiator
+	if (config_enet.id < 7)
+	{
+		config_enet.mask = 1 << config_enet.id;
+		used_masks |= config_enet.mask;
+	}
+	else
+	{
+		config_enet.id = 255;
+		config_enet.mask = 0;
+	}
+	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
+	{
+		if (config_hdd[i].id < 7 && config_hdd[i].filename != NULL)
+		{
+			config_hdd[i].mask = 1 << config_hdd[i].id;
+			if (! (config_hdd[i].mask & used_masks))
+			{
+				// mask is free
+				used_masks |= config_hdd[i].mask;
+			}
+			else
+			{
+				// collision with another device, disable
+				config_hdd[i].mask = 0;
+				config_hdd[i].id = 255;
+			}
+		}
+		else
+		{
+			config_hdd[i].mask = 0;
+			config_hdd[i].id = 255;
+		}
+	}
+	*target_masks = used_masks & 0x7F;
 
 	// clean up
 	fclose(fp);
