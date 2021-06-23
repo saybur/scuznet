@@ -31,7 +31,7 @@
  * whenever it is reset.
  */
 const uint8_t sense_data_no_sense[] PROGMEM = {
-	0xC0, 0x00, 0x00, 0x00,
+	0xF0, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
@@ -44,7 +44,7 @@ const uint8_t sense_data_no_sense[] PROGMEM = {
  * The sense data has ILLEGAL REQUEST, along with LOGICAL UNIT NOT SUPPORTED.
  */
 const uint8_t sense_data_illegal_lun[] PROGMEM = {
-	0xC0, 0x00, 0x05, 0x00,
+	0xF0, 0x00, 0x05, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x25, 0x00, 0x00, 0x00,
@@ -493,7 +493,7 @@ void logic_cmd_illegal_op(uint8_t opcode)
 	debug_dual(DEBUG_LOGIC_BAD_CMD, opcode);
 
 	// update sense data
-	devices[device_id].sense_data[0] = 0x80;
+	devices[device_id].sense_data[0] = 0xF0;
 	for (uint8_t i = 1; i < 18; i++)
 	{
 		devices[device_id].sense_data[i] = 0x00;
@@ -512,7 +512,7 @@ void logic_cmd_illegal_arg(uint8_t position)
 	debug(DEBUG_LOGIC_BAD_CMD_ARGS);
 
 	// update sense data
-	devices[device_id].sense_data[0] = 0x80;
+	devices[device_id].sense_data[0] = 0xF0;
 	for (uint8_t i = 1; i < 18; i++)
 	{
 		devices[device_id].sense_data[i] = 0x00;
@@ -530,7 +530,7 @@ void logic_cmd_illegal_arg(uint8_t position)
 
 void logic_set_sense(uint8_t sense, uint16_t asc)
 {
-	devices[device_id].sense_data[0] = 0x80;
+	devices[device_id].sense_data[0] = 0xF0;
 	for (uint8_t i = 1; i < 18; i++)
 	{
 		devices[device_id].sense_data[i] = 0x00;
