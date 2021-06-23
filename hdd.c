@@ -48,6 +48,7 @@ static uint8_t capacity_data[8] = {
 
 static uint8_t hdd_ready;
 static uint8_t hdd_error;
+static uint8_t open_hdd_vol = 255;
 
 // generic buffer for READ/WRITE BUFFER commands
 #define MEMORY_BUFFER_LENGTH 68
@@ -231,17 +232,25 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 		uint8_t res;
 		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
-			// open the needed file
-			res = pf_open(config_hdd[hdd_id].filename);
-			if (res)
+			// if virtual HDD is not already open, do so now
+			if (open_hdd_vol != hdd_id)
 			{
-				debug(DEBUG_HDD_FOPEN_FAILED);
-				hdd_error = 1;
-				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-						SENSE_DATA_NO_INFORMATION);
-				logic_status(LOGIC_STATUS_CHECK_CONDITION);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				return;
+				res = pf_open(config_hdd[hdd_id].filename);
+				if (res)
+				{
+					debug(DEBUG_HDD_FOPEN_FAILED);
+					hdd_error = 1;
+					open_hdd_vol = 255;
+					logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+							SENSE_DATA_NO_INFORMATION);
+					logic_status(LOGIC_STATUS_CHECK_CONDITION);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					return;
+				}
+				else
+				{
+					open_hdd_vol = hdd_id;
+				}
 			}
 
 			// move to correct sector
@@ -349,17 +358,25 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		uint8_t res;
 		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
-			// open the needed file
-			res = pf_open(config_hdd[hdd_id].filename);
-			if (res)
+			// if virtual HDD is not already open, do so now
+			if (open_hdd_vol != hdd_id)
 			{
-				debug(DEBUG_HDD_FOPEN_FAILED);
-				hdd_error = 1;
-				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-						SENSE_DATA_NO_INFORMATION);
-				logic_status(LOGIC_STATUS_CHECK_CONDITION);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				return;
+				res = pf_open(config_hdd[hdd_id].filename);
+				if (res)
+				{
+					debug(DEBUG_HDD_FOPEN_FAILED);
+					hdd_error = 1;
+					open_hdd_vol = 255;
+					logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+							SENSE_DATA_NO_INFORMATION);
+					logic_status(LOGIC_STATUS_CHECK_CONDITION);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					return;
+				}
+				else
+				{
+					open_hdd_vol = hdd_id;
+				}
 			}
 
 			// move to correct sector
