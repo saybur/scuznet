@@ -908,7 +908,7 @@ uint8_t hdd_init(void)
 			res = pf_size(&size);
 			if (res)
 			{
-				debug(DEBUG_HDD_SIZE_FAILED);
+				debug(DEBUG_HDD_FILE_SIZE_FAILED);
 				return 0;
 			}
 			size >>= 9; // in 512 byte sectors
@@ -918,7 +918,28 @@ uint8_t hdd_init(void)
 			}
 		}
 	}
-	
+
+	// verify native volumes do not exceed the end of the memory card
+	// TODO this is experimental and needs some testing
+	uint32_t card_size;
+	if (disk_ioctl(GET_SECTOR_COUNT, &card_size))
+	{
+		debug(DEBUG_HDD_IOCTRL_ERROR);
+		return 0;
+	}
+	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
+	{
+		if (config_hdd[i].id != 255 && config_hdd[i].start > 0)
+		{
+			uint32_t end = config_hdd[i].start + config_hdd[i].size;
+			if(end > card_size)
+			{
+				debug_dual(DEBUG_HDD_NATIVE_VOLUME_SIZE_ERROR, i);
+				return 0;
+			}
+		}
+	}
+
 	hdd_ready = 1;
 	return 1;
 }

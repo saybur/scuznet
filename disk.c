@@ -143,7 +143,7 @@ static uint8_t mem_select(void)
 	return 0; // timeout
 }
 
-static uint8_t mem_bulk_read(uint8_t* buffer, uint16_t start, uint16_t count)
+static uint8_t mem_block_read(uint8_t* buffer, uint16_t start, uint16_t count)
 {
 	uint8_t token;
 	uint16_t i;
@@ -189,6 +189,37 @@ static uint8_t mem_bulk_read(uint8_t* buffer, uint16_t start, uint16_t count)
 	while (data_not_ready());
 	MEM_USART.DATA;
 	
+	return 1;
+}
+
+static uint8_t mem_bulk_read(uint8_t* buffer, uint16_t count)
+{
+	uint8_t token;
+	mem_setup_timeout(200);
+	do
+	{
+		token = mem_send(0xFF);
+	}
+	while (token == 0xFF && (! mem_timed_out()));
+	if (token != 0xFE) return 0;
+
+	MEM_USART.DATA = 0xFF;
+	while (! (MEM_USART.STATUS & USART_DREIF_bm));
+	MEM_USART.DATA = 0xFF;
+	do
+	{
+		while (data_not_ready());
+		*buffer++ = MEM_USART.DATA;
+		MEM_USART.DATA = 0xFF;
+	}
+	while (--count); // sends +2 than requested for CRC
+
+	// trash CRC
+	while (data_not_ready());
+	MEM_USART.DATA;
+	while (data_not_ready());
+	MEM_USART.DATA;
+
 	return 1;
 }
 
@@ -419,7 +450,7 @@ DRESULT disk_readp(
 	DRESULT res = RES_ERROR;
 	if (mem_cmd(CMD17, sector) == 0)
 	{
-		if (mem_bulk_read(buff, offset, count)) res = RES_OK;
+		if (mem_block_read(buff, offset, count)) res = RES_OK;
 	}
 	mem_deselect();
 	return res;
@@ -445,7 +476,7 @@ DRESULT disk_read_multi (
 		void* buff = malloc(512);
 		if (buff != NULL
 				&& mem_cmd(CMD17, sector) == 0
-				&& mem_bulk_read(buff, 0, 512)
+				&& mem_block_read(buff, 0, 512)
 				&& func(buff, 512) == 512)
 		{
 			count = 0;
@@ -482,7 +513,7 @@ DRESULT disk_read_multi (
 			MEM_DMA_READ.ADDRCTRL = DMA_CH_DESTDIR_INC_gc;
 			
 			// directly read the first block
-			if (! mem_bulk_read(buff_a, 0, 512))
+			if (! mem_block_read(buff_a, 0, 512))
 			{
 				debug(DEBUG_MEM_READ_MUL_FIRST_FAILED);
 				res = RES_ERROR;
@@ -778,3 +809,86 @@ DRESULT disk_write_multi (
 }
 
 #endif
+
+DRESULT disk_ioctl (
+	BYTE cmd,
+	void* buff
+)
+{
+	DRESULT result;
+	BYTE n, csd[16];
+	DWORD csize;
+
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+
+	result = RES_ERROR;
+	switch (cmd)
+	{
+		case CTRL_SYNC:
+			if (mem_select()) result = RES_OK;
+			mem_deselect();
+			break;
+
+		case GET_SECTOR_COUNT: // get number of sectors on disk
+			if ((mem_cmd(CMD9, 0) == 0) && mem_bulk_read(csd, 16))
+			{
+				if ((csd[0] >> 6) == 1) // SDv2
+				{
+					csize = csd[9] + ((WORD)csd[8] << 8)
+							+ ((DWORD)(csd[7] & 63) << 16) + 1;
+					*(DWORD*) buff = csize << 10;
+				}
+				else // SDv1 or MMC
+				{
+					n = (csd[5] & 15) + ((csd[10] & 128) >> 7)
+							+ ((csd[9] & 3) << 1) + 2;
+					csize = (csd[8] >> 6) + ((WORD) csd[7] << 2)
+							+ ((WORD) (csd[6] & 3) << 10) + 1;
+					*(DWORD*) buff = csize << (n - 9);
+				}
+				result = RES_OK;
+			}
+			mem_deselect();
+			break;
+
+		case GET_BLOCK_SIZE: // set erase block size in sectors
+			if (card_type & CT_SDC2) // SDv2
+			{
+				if (mem_cmd(ACMD13, 0) == 0)
+				{
+					mem_send(0xFF);
+					if (mem_bulk_read(csd, 16))
+					{
+						for (n = 64 - 16; n; n--) mem_send(0xFF);
+						*(DWORD*) buff = 16UL << (csd[10] >> 4);
+						result = RES_OK;
+					}
+				}
+			}
+			else // SDv1 or MMCv3
+			{
+				if ((mem_cmd(CMD9, 0) == 0) && mem_bulk_read(csd, 16))
+				{
+					if (card_type & CT_SDC1)
+					{
+						*(DWORD*) buff = (((csd[10] & 63) << 1)
+								+ ((WORD) (csd[11] & 128) >> 7) + 1)
+										<< ((csd[13] >> 6) - 1);
+					}
+					else
+					{
+						*(DWORD*)buff = ((WORD) ((csd[10] & 124) >> 2) + 1)
+								* (((csd[11] & 3) << 3)
+								+ ((csd[11] & 224) >> 5) + 1);
+					}
+				}
+			}
+			mem_deselect();
+			break;
+
+		default:
+			result = RES_PARERR;
+	}
+
+	return result;
+}
