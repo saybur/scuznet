@@ -311,12 +311,13 @@ void logic_data_in_pgm(const uint8_t*, uint8_t);
  */
 
 /*
- * Used when a target has detected an illegal command opcode.
+ * Used when a target has detected an illegal command opcode. The opcode should
+ * be given to the call for reporting.
  * 
  * This will update the given sense bytes, and if the PHY is still active,
  * will send CHECK CONDITION and COMMAND COMPLETE as well.
  */
-void logic_cmd_illegal_op(void);
+void logic_cmd_illegal_op(uint8_t);
 
 /*
  * Used when a target has detected an illegal command argument in the CDB.

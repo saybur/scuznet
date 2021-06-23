@@ -62,6 +62,7 @@
 #define DEBUG_HDD_SIZE_FAILED                     0x96
 #define DEBUG_HDD_FOPEN_FAILED                    0x97
 #define DEBUG_HDD_INVALID_FILE                    0x98
+#define DEBUG_HDD_SIZE_EXCEEDED                   0x99
 #define DEBUG_LINK_TX_REQUESTED                   0xA0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5

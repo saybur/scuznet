@@ -570,7 +570,7 @@ void link_main(void)
 				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 				break;
 			default:
-				logic_cmd_illegal_op();
+				logic_cmd_illegal_op(cmd[0]);
 		}
 	}
 

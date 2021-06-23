@@ -201,9 +201,16 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
 	}
+	if (op.lba + op.length >= config_hdd[hdd_id].size)
+	{
+		debug(DEBUG_HDD_SIZE_EXCEEDED);
+		logic_cmd_illegal_arg(op.invalid - 1);
+		return;
+	}
 
 	if (config_hdd[hdd_id].filename != NULL)
 	{
+		// filesystem virtual HDD
 		res = pf_open(config_hdd[hdd_id].filename);
 		if (res)
 		{
@@ -218,6 +225,7 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 	}
 	else
 	{
+		// shouldn't be able to get here, this is probably a programming error
 		debug(DEBUG_HDD_INVALID_FILE);
 		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
 		logic_status(LOGIC_STATUS_CHECK_CONDITION);
@@ -303,9 +311,16 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
 	}
+	if (op.lba + op.length >= config_hdd[hdd_id].size)
+	{
+		debug(DEBUG_HDD_SIZE_EXCEEDED);
+		logic_cmd_illegal_arg(op.invalid - 1);
+		return;
+	}
 
 	if (config_hdd[hdd_id].filename != NULL)
 	{
+		// filesystem virtual HDD
 		res = pf_open(config_hdd[hdd_id].filename);
 		if (res)
 		{
@@ -320,7 +335,12 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 	}
 	else
 	{
-		
+		// shouldn't be able to get here, this is probably a programming error
+		debug(DEBUG_HDD_INVALID_FILE);
+		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
 	}
 
 	if (op.length > 0)
@@ -801,8 +821,8 @@ static void hdd_write_buffer(uint8_t* cmd)
 			|| cmd[7] > 0
 			|| length > MEMORY_BUFFER_LENGTH - 4)
 	{
-		// too long
-		logic_cmd_illegal_op();
+		// exceeded buffer capacity
+		logic_cmd_illegal_arg(6);
 		return;
 	}
 	if (length < 4)
@@ -950,7 +970,7 @@ uint8_t hdd_main(uint8_t hdd_id)
 			hdd_write_buffer(cmd);
 			break;
 		default:
-			logic_cmd_illegal_op();
+			logic_cmd_illegal_op(cmd[0]);
 	}
 	logic_done();
 	return 1;

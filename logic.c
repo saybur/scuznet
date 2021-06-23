@@ -373,7 +373,7 @@ uint8_t logic_command(uint8_t* command)
 	// command op out of range handler
 	if (command[0] >= 0x60)
 	{
-		logic_cmd_illegal_op();
+		logic_cmd_illegal_op(command[0]);
 		logic_done();
 		return 0;
 	}
@@ -488,9 +488,9 @@ void logic_data_in_pgm(const uint8_t* data, uint8_t len)
  * ============================================================================
  */
 
-void logic_cmd_illegal_op(void)
+void logic_cmd_illegal_op(uint8_t opcode)
 {
-	debug(DEBUG_LOGIC_BAD_CMD);
+	debug_dual(DEBUG_LOGIC_BAD_CMD, opcode);
 
 	// update sense data
 	devices[device_id].sense_data[0] = 0x80;
