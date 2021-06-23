@@ -94,13 +94,14 @@ static void hdd_set_capacity(uint8_t hdd_id)
 {
 	/*
 	 * We strip off the low 12 bits to conform with the sizing reported by the
-	 * rigid disk geometry page in MODE SENSE.
+	 * rigid disk geometry page in MODE SENSE, then subtract 1 to get the last
+	 * readable block for the command.
 	 */
-	uint32_t sectors = config_hdd[hdd_id].size;
-	capacity_data[0] = (uint8_t) (sectors >> 24);
-	capacity_data[1] = (uint8_t) (sectors >> 16);
-	capacity_data[2] = (uint8_t) ((sectors >> 8) & 0xF0);
-	capacity_data[3] = 0;
+	uint32_t last = (config_hdd[hdd_id].size & 0xFFFFF000) - 1;
+	capacity_data[0] = (uint8_t) (last >> 24);
+	capacity_data[1] = (uint8_t) (last >> 16);
+	capacity_data[2] = (uint8_t) (last >> 8);
+	capacity_data[3] = (uint8_t) last;
 }
 
 static void hdd_read_capacity(uint8_t hdd_id, uint8_t* cmd)
