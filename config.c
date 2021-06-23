@@ -160,6 +160,29 @@ static int config_handler(
 			config_hdd[hddsel].filename = strdup(value);
 			return 1;
 		}
+		else if (strcmp(name, "raw") == 0)
+		{
+			uint8_t rval = 0;
+			char* copy = strdup(value);
+			char* tok = strtok(copy, ":");
+			if (tok != NULL)
+			{
+				uint32_t start = (uint32_t) atol(tok);
+				tok = strtok(NULL, ":");
+				if (tok != NULL)
+				{
+					uint32_t end = (uint32_t) atol(tok);
+					if (end > start)
+					{
+						config_hdd[hddsel].start = start;
+						config_hdd[hddsel].size = end - start;
+						rval = 1;
+					}
+				}
+			}
+			free(copy);
+			return rval;
+		}
 		else
 		{
 			return 0;
@@ -187,6 +210,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	{
 		config_hdd[i].id = 255;
 		config_hdd[i].filename = NULL;
+		config_hdd[i].start = 0;
 		config_hdd[i].size = 0;
 	}
 	
@@ -241,7 +265,9 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	}
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
-		if (config_hdd[i].id < 7 && config_hdd[i].filename != NULL)
+		if (config_hdd[i].id < 7
+				&& (config_hdd[i].filename != NULL
+					|| config_hdd[i].start > 0))
 		{
 			config_hdd[i].mask = 1 << config_hdd[i].id;
 			if (! (config_hdd[i].mask & used_masks))

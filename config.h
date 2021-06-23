@@ -87,6 +87,7 @@ typedef struct HDDConfig_t {
 	uint8_t id;                 // disabled when set to 255
 	uint8_t mask;				// the bitmask for the above ID
 	char* filename;
+	uint32_t start;
 	uint32_t size;
 } HDDConfig;
 extern HDDConfig config_hdd[HARD_DRIVE_COUNT];

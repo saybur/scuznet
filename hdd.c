@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <avr/pgmspace.h>
 #include <util/delay.h>
+#include "lib/pff/diskio.h"
 #include "lib/pff/pff.h"
 #include "config.h"
 #include "debug.h"
@@ -180,7 +181,6 @@ static void hdd_format(uint8_t* cmd)
 
 static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 {
-	uint8_t res;
 	uint16_t act_len;
 	
 	if (! hdd_ready)
@@ -214,31 +214,6 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 		return;
 	}
 
-	if (config_hdd[hdd_id].filename != NULL)
-	{
-		// filesystem virtual HDD
-		res = pf_open(config_hdd[hdd_id].filename);
-		if (res)
-		{
-			debug(DEBUG_HDD_FOPEN_FAILED);
-			hdd_error = 1;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-			return;
-		}
-	}
-	else
-	{
-		// shouldn't be able to get here, this is probably a programming error
-		debug(DEBUG_HDD_INVALID_FILE);
-		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
-		logic_status(LOGIC_STATUS_CHECK_CONDITION);
-		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-		return;
-	}
-
 	if (op.length > 0)
 	{
 		if (debug_enabled())
@@ -252,22 +227,55 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 			}
 		}
 		phy_phase(PHY_PHASE_DATA_IN);
-		
-		// move to correct sector
-		res = pf_lseek(op.lba * 512);
-		if (res)
+
+		uint8_t res;
+		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
-			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
-			hdd_error = 1;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
+			// open the needed file
+			res = pf_open(config_hdd[hdd_id].filename);
+			if (res)
+			{
+				debug(DEBUG_HDD_FOPEN_FAILED);
+				hdd_error = 1;
+				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+						SENSE_DATA_NO_INFORMATION);
+				logic_status(LOGIC_STATUS_CHECK_CONDITION);
+				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+				return;
+			}
+
+			// move to correct sector
+			res = pf_lseek(op.lba * 512);
+			if (res)
+			{
+				debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
+				hdd_error = 1;
+				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+						SENSE_DATA_NO_INFORMATION);
+				logic_status(LOGIC_STATUS_CHECK_CONDITION);
+				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+				return;
+			}
+
+			// read from card
+			res = pf_mread(phy_data_offer_bulk, op.length, &act_len);
+		}
+		else if (config_hdd[hdd_id].size > 0) // native card access
+		{
+			uint32_t offset = config_hdd[hdd_id].size + op.lba;
+			res = disk_read_multi(phy_data_offer_bulk, offset, op.length);
+			if (! res) act_len = op.length;
+		}
+		else
+		{
+			// shouldn't be able to get here, this is probably a programming error
+			debug(DEBUG_HDD_INVALID_FILE);
+			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return;
 		}
 
-		// read from card
-		res = pf_mread(phy_data_offer_bulk, op.length, &act_len);
 		if (res || act_len != op.length)
 		{
 			if (debug_enabled())
@@ -296,7 +304,6 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 
 static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 {
-	uint8_t res;
 	uint16_t act_len;
 	
 	if (! hdd_ready)
@@ -325,31 +332,6 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		return;
 	}
 
-	if (config_hdd[hdd_id].filename != NULL)
-	{
-		// filesystem virtual HDD
-		res = pf_open(config_hdd[hdd_id].filename);
-		if (res)
-		{
-			debug(DEBUG_HDD_FOPEN_FAILED);
-			hdd_error = 1;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-			return;
-		}
-	}
-	else
-	{
-		// shouldn't be able to get here, this is probably a programming error
-		debug(DEBUG_HDD_INVALID_FILE);
-		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
-		logic_status(LOGIC_STATUS_CHECK_CONDITION);
-		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-		return;
-	}
-
 	if (op.length > 0)
 	{
 		if (debug_enabled())
@@ -364,21 +346,54 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		}
 		phy_phase(PHY_PHASE_DATA_OUT);
 
-		// move to correct sector
-		res = pf_lseek(op.lba * 512);
-		if (res)
+		uint8_t res;
+		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
-			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
-			hdd_error = 1;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
+			// open the needed file
+			res = pf_open(config_hdd[hdd_id].filename);
+			if (res)
+			{
+				debug(DEBUG_HDD_FOPEN_FAILED);
+				hdd_error = 1;
+				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+						SENSE_DATA_NO_INFORMATION);
+				logic_status(LOGIC_STATUS_CHECK_CONDITION);
+				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+				return;
+			}
+
+			// move to correct sector
+			res = pf_lseek(op.lba * 512);
+			if (res)
+			{
+				debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
+				hdd_error = 1;
+				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+						SENSE_DATA_NO_INFORMATION);
+				logic_status(LOGIC_STATUS_CHECK_CONDITION);
+				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+				return;
+			}
+
+			// write to card
+			res = pf_mwrite(phy_data_ask_bulk, op.length, &act_len);
+		}
+		else if (config_hdd[hdd_id].size > 0) // native card access
+		{
+			uint32_t offset = config_hdd[hdd_id].size + op.lba;
+			res = disk_write_multi(phy_data_ask_bulk, offset, op.length);
+			if (! res) act_len = op.length;
+		}
+		else
+		{
+			// shouldn't be able to get here, this is probably a programming error
+			debug(DEBUG_HDD_INVALID_FILE);
+			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return;
 		}
 
-		// write to card
-		res = pf_mwrite(phy_data_ask_bulk, op.length, &act_len);
 		if (res || act_len != op.length)
 		{
 			if (debug_enabled())
