@@ -35,7 +35,7 @@ static FATFS fs;
 
 static void main_handle(void)
 {
-	if (phy_is_active())
+	if (logic_ready())
 	{
 		uint8_t searching = 1;
 
@@ -51,7 +51,7 @@ static void main_handle(void)
 			if (target == config_hdd[i].mask)
 			{
 				searching = 0;
-				if (hdd_main(i))
+				if (! hdd_main(i))
 				{
 					searching = 1;
 				}
