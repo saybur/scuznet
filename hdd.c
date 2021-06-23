@@ -204,6 +204,12 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 	if (op.lba + op.length >= config_hdd[hdd_id].size)
 	{
 		debug(DEBUG_HDD_SIZE_EXCEEDED);
+		/*
+		 * TODO: this should be ILLEGAL ARGUMENT with LBA in information. I
+		 * should redo the entire REQUEST SENSE handling system in the logic
+		 * subsystem, it does not adhere to the way things are supposed to be
+		 * done.
+		 */
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
 	}
@@ -314,6 +320,7 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 	if (op.lba + op.length >= config_hdd[hdd_id].size)
 	{
 		debug(DEBUG_HDD_SIZE_EXCEEDED);
+		// TODO: per comment in _read()
 		logic_cmd_illegal_arg(op.invalid - 1);
 		return;
 	}
