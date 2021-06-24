@@ -45,15 +45,15 @@ critical for maintaining decent performance with modern memory cards.
 The two functions added that support this are:
 
 ```
-FRESULT pf_mread (UINT (*func)(BYTE*,UINT), UINT str, UINT* sr);
-FRESULT pf_mwrite (UINT (*func)(BYTE*,UINT), UINT stw, UINT* sw);
+FRESULT pf_mread (BYTE (*func)(BYTE*), UINT str, UINT* sr);
+FRESULT pf_mwrite (BYTE (*func)(BYTE*), UINT stw, UINT* sw);
 ```
 
 They should be given a function that either reads or writes a sector's worth of
-data into the provided pointer (length given as UINT), returning the number of
-bytes processed. The `btr/btw` parameters are the number of bytes to work on,
-and `br/bw` provide the number of bytes actually processed; if these numbers
-do not match there was an error of some kind.
+data into the provided pointer, returning true if successful or false if not.
+The `str/stw` parameters are the number of sectors to work on, and `sr/sw`
+provides the number of sectors actually processed; if these numbers do not
+match there was an error of some kind.
 
 These calls error out with `FR_NOT_ON_SECTOR` if the file pointer is not on a
 sector boundary when they are invoked.

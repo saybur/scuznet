@@ -984,7 +984,7 @@ FRESULT pf_read (
 }
 
 FRESULT pf_mread (
-	UINT (*func)(BYTE*,UINT),
+	BYTE (*func)(BYTE*),
 	UINT str,
 	UINT* sr
 )
@@ -1117,7 +1117,7 @@ FRESULT pf_write (
 }
 
 FRESULT pf_mwrite (
-	UINT (*func)(BYTE*,UINT),
+	BYTE (*func)(BYTE*),
 	UINT stw,
 	UINT* sw
 )

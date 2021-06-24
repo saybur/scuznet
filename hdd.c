@@ -267,12 +267,12 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 			}
 
 			// read from card
-			res = pf_mread(phy_data_offer_bulk, op.length, &act_len);
+			res = pf_mread(phy_data_offer_block, op.length, &act_len);
 		}
 		else if (config_hdd[hdd_id].size > 0) // native card access
 		{
 			uint32_t offset = config_hdd[hdd_id].size + op.lba;
-			res = disk_read_multi(phy_data_offer_bulk, offset, op.length);
+			res = disk_read_multi(phy_data_offer_block, offset, op.length);
 			if (! res) act_len = op.length;
 		}
 		else
@@ -393,12 +393,12 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 			}
 
 			// write to card
-			res = pf_mwrite(phy_data_ask_bulk, op.length, &act_len);
+			res = pf_mwrite(phy_data_ask_block, op.length, &act_len);
 		}
 		else if (config_hdd[hdd_id].size > 0) // native card access
 		{
 			uint32_t offset = config_hdd[hdd_id].size + op.lba;
-			res = disk_write_multi(phy_data_ask_bulk, offset, op.length);
+			res = disk_write_multi(phy_data_ask_block, offset, op.length);
 			if (! res) act_len = op.length;
 		}
 		else

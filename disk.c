@@ -459,7 +459,7 @@ DRESULT disk_readp(
 #include "debug.h"
 
 DRESULT disk_read_multi (
-	UINT (*func)(BYTE*,UINT),
+	BYTE (*func)(BYTE*),
 	DWORD sector,
 	UINT count
 )
@@ -477,7 +477,7 @@ DRESULT disk_read_multi (
 		if (buff != NULL
 				&& mem_cmd(CMD17, sector) == 0
 				&& mem_block_read(buff, 0, 512)
-				&& func(buff, 512) == 512)
+				&& func(buff))
 		{
 			count = 0;
 		}
@@ -563,7 +563,7 @@ DRESULT disk_read_multi (
 				MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
 
 				// send the data buffer to the computer
-				if (func(dbuf, 512) != 512)
+				if (! func(dbuf))
 				{
 					debug(DEBUG_MEM_READ_MUL_FUNC_ERR);
 					res = RES_ERROR;
@@ -585,7 +585,7 @@ DRESULT disk_read_multi (
 			// send the last sector to the computer if valid
 			if (! res)
 			{
-				if (func(cbuf, 512) != 512)
+				if (! func(cbuf))
 				{
 					debug(DEBUG_MEM_READ_MUL_FUNC_ERR);
 					res = RES_ERROR;
@@ -678,7 +678,7 @@ DRESULT disk_writep (
 }
 
 DRESULT disk_write_multi (
-	UINT (*func)(BYTE*,UINT),
+	BYTE (*func)(BYTE*),
 	DWORD sector,
 	UINT count
 )
@@ -693,8 +693,7 @@ DRESULT disk_write_multi (
 		void* buff = malloc(512);
 		if (buff != NULL)
 		{
-			uint16_t wr_len = func(buff, 512);
-			if (wr_len == 512)
+			if (func(buff))
 			{
 				if ((mem_cmd(CMD24, sector) == 0) && mem_bulk_write(buff, 0xFE, 512))
 				{
@@ -703,7 +702,7 @@ DRESULT disk_write_multi (
 			}
 			else
 			{
-				count = 0;
+				count = 1;
 			}
 		}
 		free(buff);
@@ -720,7 +719,7 @@ DRESULT disk_write_multi (
 						
 			// TODO verify malloc() does not fail
 			uint8_t bufsel = 1;
-			uint16_t wr_len;
+			uint8_t func_res;
 			uint8_t* buff_a = (uint8_t*) malloc(516);
 			*buff_a = 0xFC;
 			*(buff_a + 513) = 0xFF;
@@ -760,8 +759,8 @@ DRESULT disk_write_multi (
 				bufsel = !bufsel;
 				
 				// fetch fresh data
-				wr_len = func(cbuf + 1, 512);
-				if (wr_len == 512)
+				func_res = func(cbuf + 1);
+				if (func_res)
 				{
 					// wait for the last DMA transaction to finish
 					while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
@@ -787,7 +786,7 @@ DRESULT disk_write_multi (
 					MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
 				}
 			}
-			while (--count && wr_len == 512);
+			while (--count && func_res);
 
 			// wait for the last DMA transaction to finish
 			while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);

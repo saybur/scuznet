@@ -35,8 +35,8 @@ typedef enum {
 DSTATUS disk_initialize (void);
 DRESULT disk_readp (BYTE* buff, DWORD sector, UINT offser, UINT count);
 DRESULT disk_writep (const BYTE* buff, DWORD sc);
-DRESULT disk_read_multi (UINT (*func)(BYTE*,UINT), DWORD sector, UINT count);
-DRESULT disk_write_multi (UINT (*func)(BYTE*,UINT), DWORD sector, UINT count);
+DRESULT disk_read_multi (BYTE (*func)(BYTE*), DWORD sector, UINT count);
+DRESULT disk_write_multi (BYTE (*func)(BYTE*), DWORD sector, UINT count);
 DRESULT disk_ioctl (BYTE cmd, void* buff);
 
 #define STA_NOINIT		0x01	/* Drive not initialized */

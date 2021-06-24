@@ -440,6 +440,22 @@ void phy_data_offer(uint8_t data)
 	req_release();
 }
 
+uint8_t phy_data_offer_block(uint8_t* data)
+{
+	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
+	if (! phy_is_active()) return 0;
+
+	for (uint16_t i = 0; i < 512; i++)
+	{
+		while (phy_is_ack_asserted());
+		phy_data_set(data[i]);
+		req_assert();
+		while (! phy_is_ack_asserted());
+		req_release();
+	}
+	return 1;
+}
+
 uint16_t phy_data_offer_bulk(uint8_t* data, uint16_t len)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
@@ -525,6 +541,28 @@ uint8_t phy_data_ask(void)
 	// release /REQ, then we're done
 	req_release();
 	return data;
+}
+
+uint8_t phy_data_ask_block(uint8_t* data)
+{
+	uint8_t v;
+
+	if (! phy_is_active()) return 0;
+
+	for (uint16_t i = 0; i < 512; i++)
+	{
+		while (phy_is_ack_asserted());
+		req_assert();
+		while (! (phy_is_ack_asserted()));
+		v = phy_data_get();
+		req_release();
+		#ifdef PHY_PORT_DATA_IN_REVERSED
+			data[i] = phy_reverse_table[v];
+		#else
+			data[i] = v;
+		#endif
+	}
+	return 1;
 }
 
 uint16_t phy_data_ask_bulk(uint8_t* data, uint16_t len)

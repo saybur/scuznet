@@ -188,6 +188,12 @@ void phy_data_offer(uint8_t);
 uint16_t phy_data_offer_bulk(uint8_t*, uint16_t);
 
 /*
+ * Offers the initiator 512 bytes from the given array. This returns true on
+ * successful transfer, false on failure.
+ */
+uint8_t phy_data_offer_block(uint8_t*);
+
+/*
  * Used during DATA IN to take data from the given USART and send it to the
  * initiator.
  * 
@@ -200,14 +206,6 @@ uint16_t phy_data_offer_bulk(uint8_t*, uint16_t);
  * leaving one additional byte in the RX queue.
  */
 void phy_data_offer_stream(USART_t*, uint16_t);
-
-/*
- * Specialized version of the above call for use with the memory card. This
- * will always transfer a fixed length of 512 bytes, trash one additional byte
- * from the USART, and leave one byte pending in transmission. This call
- * offers higher throughput than the above function.
- */
-void phy_data_offer_stream_block(USART_t*);
 
 /*
  * Specialized version of _offer_stream(), for use with the link device. This
@@ -230,6 +228,12 @@ uint8_t phy_data_ask(void);
  * given array. The number of bytes received is returned.
  */
 uint16_t phy_data_ask_bulk(uint8_t*, uint16_t);
+
+/*
+ * Asks the initiator for 512 bytes and stores them in the given array. Returns
+ * true if successful, false on failure.
+ */
+uint8_t phy_data_ask_block(uint8_t*);
 
 /*
  * Used during DATA OUT to take data from the initiator and send it to the
