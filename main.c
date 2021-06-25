@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <avr/io.h>
 #include <util/delay.h>
-#include "lib/pff/pff.h"
+#include "lib/ff/ff.h"
 #include "config.h"
 #include "debug.h"
 #include "enc.h"
@@ -98,7 +98,7 @@ int main(void)
 	}
 
 	// mount the memory card
-	uint8_t res = pf_mount(&fs);
+	uint8_t res = f_mount(&fs, "", 0);
 	if (res)
 	{
 		while (1)

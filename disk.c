@@ -36,8 +36,8 @@
 #include <stdlib.h>
 #include <util/atomic.h>
 #include <util/delay.h>
-#include "./lib/pff/pff.h"
-#include "./lib/pff/diskio.h"
+#include "./lib/ff/ff.h"
+#include "./lib/ff/diskio.h"
 #include "config.h"
 
 #define cs_assert()         (MEM_PORT.OUTCLR = MEM_PIN_CS)
@@ -141,55 +141,6 @@ static uint8_t mem_select(void)
 	if (mem_wait_ready(500)) return 1; // ok
 	mem_deselect();
 	return 0; // timeout
-}
-
-static uint8_t mem_block_read(uint8_t* buffer, uint16_t start, uint16_t count)
-{
-	uint8_t token;
-	uint16_t i;
-	uint16_t end = start + count;
-	if (end > 512) end = 512;
-	
-	mem_setup_timeout(200);
-	do
-	{
-		token = mem_send(0xFF);
-	}
-	while (token == 0xFF && (! mem_timed_out()));
-	if (token != 0xFE) return 0;
-	
-	// first two
-	MEM_USART.DATA = 0xFF;
-	while (! (MEM_USART.STATUS & USART_DREIF_bm));
-	MEM_USART.DATA = 0xFF;
-
-	// toss until start
-	for (i = 0; i < start; i++)
-	{
-		while (data_not_ready());
-		MEM_USART.DATA;
-		MEM_USART.DATA = 0xFF;
-	}
-	for ( ; i < end; i++)
-	{
-		while (data_not_ready());
-		*buffer++ = MEM_USART.DATA;
-		MEM_USART.DATA = 0xFF;
-	}
-	for ( ; i < 512; i++)
-	{
-		while (data_not_ready());
-		MEM_USART.DATA;
-		MEM_USART.DATA = 0xFF;
-	}
-
-	// trash CRC
-	while (data_not_ready());
-	MEM_USART.DATA;
-	while (data_not_ready());
-	MEM_USART.DATA;
-	
-	return 1;
 }
 
 static uint8_t mem_bulk_read(uint8_t* buffer, uint16_t count)
@@ -362,8 +313,10 @@ static uint8_t mem_cmd(uint8_t cmd, uint32_t arg)
  * ============================================================================
  */
 
-DSTATUS disk_initialize(void)
+DSTATUS disk_initialize(BYTE pdrv)
 {
+	if (pdrv != 0) return STA_NOINIT;
+
 	uint8_t n, cmd, type, ocr[4];
 
 	mem_reset();
@@ -436,24 +389,39 @@ DSTATUS disk_initialize(void)
 	return card_status;
 }
 
-DRESULT disk_readp(
-	BYTE *buff,     // pointer to the read buffer, or null for stream
-	DWORD sector,   // LBA
-	UINT offset,    // byte offset to start reading from
-	UINT count      // number of bytes to read
+DSTATUS disk_status(BYTE pdrv)
+{
+	if (pdrv != 0) return STA_NOINIT;
+	return card_status;
+}
+
+DRESULT disk_read(
+	BYTE pdrv,
+	BYTE *buff,
+	LBA_t lba,
+	UINT count
 )
 {
+	if (pdrv != 0) return RES_NOTRDY;
 	if (card_status & STA_NOINIT) return RES_NOTRDY;
 	if (! count) return RES_PARERR;
-	
-	if (! (card_type & CT_BLOCK)) sector *= 512;
-	DRESULT res = RES_ERROR;
-	if (mem_cmd(CMD17, sector) == 0)
+
+	if (! (card_type & CT_BLOCK)) lba *= 512;
+
+	uint8_t cmd = count > 1 ? CMD18 : CMD17;
+	if (mem_cmd(CMD17, lba) == 0)
 	{
-		if (mem_block_read(buff, offset, count)) res = RES_OK;
+		do
+		{
+			if (! mem_bulk_read(buff, 512)) break;
+			buff += 512;
+		}
+		while (--count);
+		if (cmd == CMD18) mem_cmd(CMD12, 0);
 	}
 	mem_deselect();
-	return res;
+
+	return count ? RES_ERROR : RES_OK;
 }
 
 #include "debug.h"
@@ -476,7 +444,7 @@ DRESULT disk_read_multi (
 		void* buff = malloc(512);
 		if (buff != NULL
 				&& mem_cmd(CMD17, sector) == 0
-				&& mem_block_read(buff, 0, 512)
+				&& mem_bulk_read(buff, 512)
 				&& func(buff))
 		{
 			count = 0;
@@ -513,7 +481,7 @@ DRESULT disk_read_multi (
 			MEM_DMA_READ.ADDRCTRL = DMA_CH_DESTDIR_INC_gc;
 			
 			// directly read the first block
-			if (! mem_block_read(buff_a, 0, 512))
+			if (! mem_bulk_read(buff_a, 512))
 			{
 				debug(DEBUG_MEM_READ_MUL_FIRST_FAILED);
 				res = RES_ERROR;
@@ -608,73 +576,46 @@ DRESULT disk_read_multi (
 	return res;
 }
 
-#if PF_USE_WRITE
+#if !FF_FS_READONLY
 
-static UINT wc; // sector write counter
-
-DRESULT disk_writep (
-	const BYTE *buff,    // pointer to the bytes to be written
-	DWORD sc             // number bytes to send, LBA, or zero
+DRESULT disk_write (
+	BYTE pdrv,
+	const BYTE* buff,
+	LBA_t lba,
+	UINT count
 )
 {
+	if (pdrv != 0) return RES_NOTRDY;
 	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	if (! count) return RES_PARERR;
+	if (card_status & STA_PROTECT) return RES_WRPRT; // never true
 
-	DRESULT res;
-	UINT bc;
-	
-	res = RES_ERROR;
-	if (buff)
+	if (! (card_type & CT_BLOCK)) lba *= 512;
+
+	if (count == 1)
 	{
-		bc = sc;
-		while (bc && wc)
+		if ((mem_cmd(CMD24, lba) == 0) && mem_bulk_write(buff, 0xFE, 512))
 		{
-			mem_send(*buff++);
-			wc--;
-			bc--;
+			count = 0;
 		}
-		res = RES_OK;
 	}
 	else
 	{
-		if (sc)
+		if (card_type & CT_SDC) mem_cmd(ACMD23, count);
+		if (mem_cmd(CMD25, lba) == 0)
 		{
-			// convert to byte address if needed
-			if (! (card_type & CT_BLOCK)) sc *= 512;
-			// start sector write
-			if (mem_cmd(CMD24, sc) == 0)
+			do
 			{
-				mem_send(0xFF);
-				mem_send(0xFE);
-				wc = 512;
-				res = RES_OK;
+				if (! mem_bulk_write(buff, 0xFC, 512)) break;
+				buff += 512;
 			}
-		}
-		else
-		{
-			bc = wc + 2;
-			wc = 0;
-
-			// fill leftover bytes and CRC with zeros
-			while (bc--) mem_send(0x00);
-			
-			// receive data response and wait for end of write
-			if ((mem_send(0xFF) & 0x1F) == 0x05)
-			{
-				// wait until card goes back to ready
-				mem_setup_timeout(500);
-				uint8_t v;
-				do
-				{
-					v = mem_send(0xFF);
-				}
-				while (v != 0xFF && (! mem_timed_out()));
-				if (v == 0xFF) res = RES_OK;
-			}
-			mem_deselect();
+			while (--count);
+			if (! mem_bulk_write(buff, 0xFD, 0)) count = 1;
 		}
 	}
-	
-	return res;
+	mem_deselect();
+
+	return count ? RES_ERROR : RES_OK;
 }
 
 DRESULT disk_write_multi (
@@ -810,6 +751,7 @@ DRESULT disk_write_multi (
 #endif
 
 DRESULT disk_ioctl (
+	BYTE pdrv,
 	BYTE cmd,
 	void* buff
 )
@@ -818,6 +760,7 @@ DRESULT disk_ioctl (
 	BYTE n, csd[16];
 	DWORD csize;
 
+	if (pdrv != 0) return RES_NOTRDY;
 	if (card_status & STA_NOINIT) return RES_NOTRDY;
 
 	result = RES_ERROR;

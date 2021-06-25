@@ -3939,7 +3939,16 @@ FRESULT f_read (
 	LEAVE_FF(fs, FR_OK);
 }
 
-
+FRESULT f_mread (
+	FIL* fp, 				/* Open file to be read */
+	BYTE (*func)(BYTE*),	/* Function to supply sectors to when read */
+	UINT str,				/* Number of sectors to read */
+	UINT* sr				/* Number of sectors to read */
+)
+{
+	// TODO implement
+	return RES_OK;
+}
 
 
 #if !FF_FS_READONLY
@@ -4061,7 +4070,16 @@ FRESULT f_write (
 	LEAVE_FF(fs, FR_OK);
 }
 
-
+FRESULT f_mwrite (
+	FIL* fp,				/* Open file to be written */
+	BYTE (*func)(BYTE*),	/* Function to fetch sectors from */
+	UINT stw,				/* Number of sectors to write */
+	UINT* sw				/* Number of sectors written */
+)
+{
+	// TODO implement
+	return RES_OK;
+}
 
 
 /*-----------------------------------------------------------------------*/

@@ -19,41 +19,13 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 #include "lib/inih/ini.h"
-#include "lib/pff/pff.h"
+#include "lib/ff/ff.h"
 #include "config.h"
 #include "debug.h"
 
 ENETConfig config_enet = { 255, 0, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
 HDDConfig config_hdd[HARD_DRIVE_COUNT];
-
-static char* config_buffer;
-static uint16_t config_position;
-static uint16_t config_length;
-
-/*
- * Function for providing to fdevopen() supporting memory card reads.
- */ 
-static int config_fetch(FILE* fp)
-{
-	(void) fp; // silence compiler
-	
-	if (config_position >= config_length)
-	{
-		// at end of buffer, need more data if there is any left
-		if (config_length != 512) return _FDEV_EOF;
-		// might have more data, check if so
-		if (pf_read(config_buffer, 512, &config_length)) return _FDEV_ERR;
-		if (config_length == 0) return _FDEV_EOF;
-		// must have more, reset to beginning of buffer
-		config_position = 0;
-	}
-
-	int r = *(config_buffer + config_position);
-	config_position++;
-	return r;
-}
 
 /*
  * INIH callback for configuration information.
@@ -218,33 +190,18 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	CONFIG_RESULT result = CONFIG_OK;
 
 	// open the file off the memory card
-	FRESULT res = pf_open("SCUZNET.INI");
+	FIL fil;
+	FRESULT res = f_open(&fil, "SCUZNET.INI", FA_READ);
 	if (res)
 	{
 		debug(DEBUG_CONFIG_FILE_MISSING);
 		return CONFIG_NOFILE;
 	}
 
-	/*
-	 * We use the nonstandard fdevopen() to handle wrapping the low-level block
-	 * reader. The position/length values are arbitrary to trigger a pf_read()
-	 * call during the first invocation.
-	 */
-	config_buffer = malloc(512);
-	config_position = 512;
-	config_length = 512;
-	FILE* fp = fdevopen(NULL, config_fetch); // open read-only to our handler
-	if (config_buffer != NULL && fp != NULL)
+	// execute INIH parse using FatFs f_gets()
+	if (ini_parse_stream((ini_reader) f_gets, &fil, config_handler, NULL) < 0)
 	{
-		if (ini_parse_stream((ini_reader) fgets, fp, config_handler, NULL) < 0)
-		{
-			debug(DEBUG_CONFIG_FILE_MISSING);
-			result = CONFIG_NOLOAD;
-		}
-	}
-	else
-	{
-		debug(DEBUG_CONFIG_MEMORY_ERROR);
+		debug(DEBUG_CONFIG_FILE_MISSING);
 		result = CONFIG_NOLOAD;
 	}
 
@@ -290,9 +247,5 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	}
 	*target_masks = used_masks & 0x7F;
 
-	// clean up
-	fclose(fp);
-	free(config_buffer);
-	
 	return result;
 }
