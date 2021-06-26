@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2019-2021 saybur
+ * Copyright (C) 2021 superjer2000
  * 
  * This file is part of scuznet.
  * 
@@ -41,13 +42,60 @@ static const __flash uint8_t diagnostic_results[] = {
 #define MAC_CONFIG_OFFSET     56
 
 // Nuvolink-compatible INQUIRY header response
-static const __flash uint8_t inquiry_data[36] = {
+static const __flash uint8_t inquiry_data_n[36] = {
 	0x09, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00,
 	'N', 'u', 'v', 'o', 't', 'e', 'c', 'h',
 	'N', 'u', 'v', 'o', 'S', 'C', 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	'1', '.', '1', 'r'
 };
+
+// Daynaport-compatible INQUIRY header response
+static const __flash uint8_t inquiry_data_d[255] = {
+	0x03, 0x00, 0x01, 0x00, // 4 bytes
+	0x1E, 0x00, 0x00, 0x00, // 4 bytes
+	// Vendor ID (8 Bytes)
+	'D','a','y','n','a',' ',' ',' ',
+	//'D','A','Y','N','A','T','R','N',
+	// Product ID (16 Bytes)
+	'S','C','S','I','/','L','i','n',
+	'k',' ',' ',' ',' ',' ',' ',' ',
+	// Revision Number (4 Bytes)
+	'1','.','4','a',
+	// Firmware Version (8 Bytes)
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	// Data
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x80,0x80,0xBA, //16 bytes
+	0x00,0x00,0xC0,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x81,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, //16 bytes
+	0x00,0x00,0x00 //3 bytes
+};
+
+// the type of link device being emulated
+static LINKTYPE link_type;
 
 /*
  * The target mask for this device, and the IDs that will block reselection if
@@ -115,78 +163,94 @@ static void link_inquiry(uint8_t* cmd)
 		}
 	}
 
-	// first 36 bytes
-	if (alloc > 0)
+	// protect against 0-length allocation
+	if (alloc == 0)
+	{
+		// allow flow-through to completion
+	}
+	// otherwise switch behavior based on device type
+	else if (link_type == LINK_NUVO)
 	{
 		phy_phase(PHY_PHASE_DATA_IN);
 
 		// do first 36 bytes of pre-programmed INQUIRY
 		uint8_t limit = 36;
-		if (limit > alloc) limit = (uint8_t) alloc;
+		if (alloc < ((uint16_t) limit)) limit = (uint8_t) alloc;
 		for (uint8_t i = 0; i < limit; i++)
 		{
-			phy_data_offer(inquiry_data[i]);
+			phy_data_offer(inquiry_data_n[i]);
+		}
+
+		// next 60 bytes
+		if (alloc >= 96)
+		{
+			// 6 bytes of ROM MAC
+			for (uint8_t i = 0; i < 6; i++)
+			{
+				phy_data_offer(mac_rom[i]);
+			}
+			// 14 bytes of 0x00
+			for (uint8_t i = 0; i < 14; i++)
+			{
+				phy_data_offer(0x00);
+			}
+			// 6 bytes of dynamic MAC
+			for (uint8_t i = 0; i < 6; i++)
+			{
+				phy_data_offer(mac_dyn[i]);
+			}
+			// 34 bytes of 0x00
+			for (uint8_t i = 0; i < 34; i++)
+			{
+				phy_data_offer(0x00);
+			}
+		}
+
+		// next 196
+		if (alloc >= 292)
+		{
+			// bus statistics
+			phy_data_offer(0x04);
+			phy_data_offer(0xD2);
+			for (uint8_t i = 0; i < 86; i++)
+			{
+				phy_data_offer(0x00);
+			}
+			// bus errors
+			phy_data_offer(0x09);
+			phy_data_offer(0x29);
+			for (uint8_t i = 0; i < 58; i++)
+			{
+				phy_data_offer(0x00);
+			}
+			// network statistics
+			phy_data_offer(0x0D);
+			phy_data_offer(0x80);
+			for (uint8_t i = 0; i < 14; i++)
+			{
+				phy_data_offer(0x00);
+			}
+			// network errors
+			phy_data_offer(0x11);
+			phy_data_offer(0xD7);
+			for (uint8_t i = 0; i < 30; i++)
+			{
+				phy_data_offer(0x00);
+			}
 		}
 	}
-
-	// next 60 bytes
-	if (alloc >= 96)
+	else if (link_type == LINK_DAYNA)
 	{
-		// 6 bytes of ROM MAC
-		for (uint8_t i = 0; i < 6; i++)
+		phy_phase(PHY_PHASE_DATA_IN);
+
+		if (alloc > 255) alloc = 255;
+		for (uint16_t i = 0; i < alloc; i++)
 		{
-			phy_data_offer(mac_rom[i]);
-		}
-		// 14 bytes of 0x00
-		for (uint8_t i = 0; i < 14; i++)
-		{
-			phy_data_offer(0x00);
-		}
-		// 6 bytes of dynamic MAC
-		for (uint8_t i = 0; i < 6; i++)
-		{
-			phy_data_offer(mac_dyn[i]);
-		}
-		// 34 bytes of 0x00
-		for (uint8_t i = 0; i < 34; i++)
-		{
-			phy_data_offer(0x00);
+			phy_data_offer(inquiry_data_d[i]);
 		}
 	}
 
-	// next 196
-	if (alloc >= 292)
-	{
-		// bus statistics
-		phy_data_offer(0x04);
-		phy_data_offer(0xD2);
-		for (uint8_t i = 0; i < 86; i++)
-		{
-			phy_data_offer(0x00);
-		}
-		// bus errors
-		phy_data_offer(0x09);
-		phy_data_offer(0x29);
-		for (uint8_t i = 0; i < 58; i++)
-		{
-			phy_data_offer(0x00);
-		}
-		// network statistics
-		phy_data_offer(0x0D);
-		phy_data_offer(0x80);
-		for (uint8_t i = 0; i < 14; i++)
-		{
-			phy_data_offer(0x00);
-		}
-		// network errors
-		phy_data_offer(0x11);
-		phy_data_offer(0xD7);
-		for (uint8_t i = 0; i < 30; i++)
-		{
-			phy_data_offer(0x00);
-		}
-	}
-
+	// wrap up command regardless
 	if (phy_is_atn_asserted())
 	{
 		logic_message_out();

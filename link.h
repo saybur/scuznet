@@ -51,6 +51,15 @@
  */
 
 /*
+ * Defines the supported link emulation types.
+ */
+typedef enum {
+	LINK_NONE = 0,
+	LINK_NUVO,
+	LINK_DAYNA
+} LINKTYPE;
+
+/*
  * Initializes the emulated link device. This should be given a six-byte array
  * with the MAC address, as well as a mask with only 1 bit set for the target
  * that this device will obey. This function should only be called once at
