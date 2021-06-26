@@ -25,7 +25,7 @@ R20,1,150ohm Resistor,Stackpole Electronics Inc RMCF0603FT150R,RMCF0603FT150RCT-
 R22-37,16,3.3Kohm Resistor,Stackpole Electronics Inc RMCF0603JT3K30,RMCF0603JT3K30CT-ND,
 "RN1,2",2,100ohm Resistor Pack,Bourns Inc. 4610X-101-101LF,4610X-1-101LF-ND,
 "TP1,2",2,Test Point,Keystone Electronics 5001,36-5001-ND ,
-U1,1,Main MCU,Microchip Technology ATXMEGA64A3U-AU,ATXMEGA64A3U-AU-ND,
+U1,1,Main MCU,Microchip Technology ATXMEGA192A3U-AU,ATXMEGA192A3U-AU-ND,
 U2-5,4,Line Drivers,Texas Instruments SN74LVTH126DR,296-8663-1-ND,
 U6,1,Control Line Listener,Texas Instruments SN74LVC14ADRG4,296-49911-1-ND,
 U7,1,Data Line Listener,Texas Instruments SN74LVT245BDWR,296-8651-1-ND,
