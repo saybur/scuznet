@@ -53,6 +53,7 @@
 #define DEBUG_HDD_WRITE_MULTIPLE                  0x89
 #define DEBUG_HDD_PACKET_START                    0x8A
 #define DEBUG_HDD_PACKET_END                      0x8B
+#define DEBUG_HDD_SEEK                            0x8C
 #define DEBUG_HDD_NOT_READY                       0x90
 #define DEBUG_HDD_MEM_SEEK_ERROR                  0x91
 #define DEBUG_HDD_MEM_READ_ERROR                  0x92
@@ -65,6 +66,7 @@
 #define DEBUG_HDD_SIZE_EXCEEDED                   0x99
 #define DEBUG_HDD_IOCTRL_ERROR                    0x9A
 #define DEBUG_HDD_NATIVE_VOLUME_SIZE_ERROR        0x9B
+#define DEBUG_HDD_SEEK_ERROR                      0x9C
 #define DEBUG_LINK_TX_REQUESTED                   0xA0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5
@@ -95,8 +97,8 @@
 #define led_off()             LED_PORT.DIR &= ~LED_PIN;
 
 // alias for use below
-#define debug_enabled()      1// (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_DEBUG)
-#define debug_verbose()      1// (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_VERBOSE)
+#define debug_enabled()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_DEBUG)
+#define debug_verbose()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_VERBOSE)
 
 #ifdef DEBUGGING
 static inline __attribute__((always_inline)) void debug(uint8_t v)

@@ -904,6 +904,124 @@ static void hdd_mode_select(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
+static void hdd_seek(uint8_t hdd_id, uint8_t* cmd)
+{
+	if (! hdd_ready)
+	{
+		debug(DEBUG_HDD_NOT_READY);
+		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	logic_parse_data_op(cmd);
+	LogicDataOp op = logic_data;
+	if (op.invalid)
+	{
+		debug(DEBUG_HDD_INVALID_OPERATION);
+		hdd_error = 1;
+		logic_cmd_illegal_arg(op.invalid - 1);
+		return;
+	}
+	if (op.lba >= config_hdd[hdd_id].size)
+	{
+		debug(DEBUG_HDD_SIZE_EXCEEDED);
+		// TODO: per comment in _read()
+		logic_cmd_illegal_arg(op.invalid - 1);
+		return;
+	}
+
+	if (debug_enabled())
+	{
+		debug(DEBUG_HDD_SEEK);
+		if (debug_verbose())
+		{
+			debug_dual(
+				(uint8_t) (op.lba >> 24),
+				(uint8_t) (op.lba >> 16));
+			debug_dual(
+				(uint8_t) (op.lba >> 8),
+				(uint8_t) op.lba);
+		}
+	}
+
+	uint8_t res;
+	if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
+	{
+		FIL fp;
+
+		// if virtual HDD is not already open, do so now
+		res = f_open(&fp, config_hdd[hdd_id].filename, FA_WRITE);
+		if (res)
+		{
+			debug(DEBUG_HDD_FOPEN_FAILED);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+
+			// TODO remove?
+			f_close(&fp);
+			return;
+		}
+
+		// move to correct sector
+		res = f_lseek(&fp, op.lba * 512);
+		if (res)
+		{
+			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
+			hdd_error = 1;
+			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+
+			// TODO remove?
+			f_close(&fp);
+
+			return;
+		}
+
+		// TODO remove?
+		f_close(&fp);
+	}
+	else if (config_hdd[hdd_id].size > 0) // native card access
+	{
+		/*
+		 * Consider native access to have "free" seeks due to the very low card
+		 * seek time, so just do nothing here and pretend to have seeked.
+		 */
+	}
+	else
+	{
+		// shouldn't be able to get here, this is probably a programming error
+		debug(DEBUG_HDD_INVALID_FILE);
+		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	if (res)
+	{
+		if (debug_enabled())
+		{
+			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
+		}
+		hdd_error = 1;
+		logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
+				SENSE_DATA_NO_INFORMATION);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
 /*
  * ============================================================================
  * 
@@ -1012,6 +1130,10 @@ uint8_t hdd_main(uint8_t hdd_id)
 			break;
 		case 0x1D: // SEND DIAGNOSTIC
 			logic_send_diagnostic(cmd);
+			break;
+		case 0x0B: // SEEK(6)
+		case 0x2B: // SEEK(10)
+			hdd_seek(hdd_id, cmd);
 			break;
 		case 0x00: // TEST UNIT READY
 			hdd_test_unit_ready();

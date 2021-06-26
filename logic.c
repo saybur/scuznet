@@ -126,7 +126,7 @@ uint8_t logic_sense_valid(void)
 
 void logic_parse_data_op(uint8_t* cmd)
 {
-	if (cmd[0] == 0x28 || cmd[0] == 0x2A)
+	if (cmd[0] == 0x28 || cmd[0] == 0x2A || cmd[0] == 0x2B)
 	{
 		if (cmd[1] & 1)
 		{
@@ -144,7 +144,7 @@ void logic_parse_data_op(uint8_t* cmd)
 			logic_data.invalid = 0;
 		}
 	}
-	else if (cmd[0] == 0x08 || cmd[0] == 0x0A)
+	else if (cmd[0] == 0x08 || cmd[0] == 0x0A || cmd[0] == 0x0B)
 	{
 		logic_data.lba = ((uint32_t) (cmd[1] & 0x1F) << 16)
 				| ((uint32_t) cmd[2] << 8)
