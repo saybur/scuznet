@@ -21,6 +21,7 @@
 #define CONFIG_H
 
 #include <avr/io.h>
+#include "lib/ff/ff.h"
 #if defined(HW_V01)
 	#include "hw_v01.h"
 #elif defined(HW_V02)
@@ -89,6 +90,7 @@ typedef struct HDDConfig_t {
 	char* filename;
 	uint32_t start;
 	uint32_t size;
+	FIL fp;
 } HDDConfig;
 extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 

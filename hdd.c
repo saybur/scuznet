@@ -231,27 +231,8 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 		uint8_t res;
 		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
-			FIL fp;
-
-			// if virtual HDD is not already open, do so now
-			res = f_open(&fp, config_hdd[hdd_id].filename, FA_READ);
-			if (res)
-			{
-				debug(DEBUG_HDD_FOPEN_FAILED);
-				hdd_error = 1;
-				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-						SENSE_DATA_NO_INFORMATION);
-				logic_status(LOGIC_STATUS_CHECK_CONDITION);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-
-				// TODO remove?
-				f_close(&fp);
-
-				return;
-			}
-
 			// move to correct sector
-			res = f_lseek(&fp, op.lba * 512);
+			res = f_lseek(&(config_hdd[hdd_id].fp), op.lba * 512);
 			if (res)
 			{
 				debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
@@ -261,17 +242,12 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 				logic_status(LOGIC_STATUS_CHECK_CONDITION);
 				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 
-				// TODO remove?
-				f_close(&fp);
-
 				return;
 			}
 
 			// read from card
-			res = f_mread(&fp, phy_data_offer_block, op.length, &act_len);
-
-			// TODO remove?
-			f_close(&fp);
+			res = f_mread(&(config_hdd[hdd_id].fp), phy_data_offer_block,
+					op.length, &act_len);
 		}
 		else if (config_hdd[hdd_id].size > 0) // native card access
 		{
@@ -362,27 +338,8 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		uint8_t res;
 		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
-			FIL fp;
-
-			// if virtual HDD is not already open, do so now
-			res = f_open(&fp, config_hdd[hdd_id].filename, FA_WRITE);
-			if (res)
-			{
-				debug(DEBUG_HDD_FOPEN_FAILED);
-				hdd_error = 1;
-				logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-						SENSE_DATA_NO_INFORMATION);
-				logic_status(LOGIC_STATUS_CHECK_CONDITION);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-
-				// TODO remove?
-				f_close(&fp);
-
-				return;
-			}
-
 			// move to correct sector
-			res = f_lseek(&fp, op.lba * 512);
+			res = f_lseek(&(config_hdd[hdd_id].fp), op.lba * 512);
 			if (res)
 			{
 				debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
@@ -392,17 +349,12 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 				logic_status(LOGIC_STATUS_CHECK_CONDITION);
 				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 
-				// TODO remove?
-				f_close(&fp);
-
 				return;
 			}
 
 			// write to card
-			res = f_mwrite(&fp, phy_data_ask_block, op.length, &act_len);
-
-			// TODO remove?
-			f_close(&fp);
+			res = f_mwrite(&(config_hdd[hdd_id].fp), phy_data_ask_block,
+					op.length, &act_len);
 		}
 		else if (config_hdd[hdd_id].size > 0) // native card access
 		{
@@ -949,26 +901,8 @@ static void hdd_seek(uint8_t hdd_id, uint8_t* cmd)
 	uint8_t res;
 	if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 	{
-		FIL fp;
-
-		// if virtual HDD is not already open, do so now
-		res = f_open(&fp, config_hdd[hdd_id].filename, FA_WRITE);
-		if (res)
-		{
-			debug(DEBUG_HDD_FOPEN_FAILED);
-			hdd_error = 1;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-
-			// TODO remove?
-			f_close(&fp);
-			return;
-		}
-
 		// move to correct sector
-		res = f_lseek(&fp, op.lba * 512);
+		res = f_lseek(&(config_hdd[hdd_id].fp), op.lba * 512);
 		if (res)
 		{
 			debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
@@ -977,15 +911,8 @@ static void hdd_seek(uint8_t hdd_id, uint8_t* cmd)
 					SENSE_DATA_NO_INFORMATION);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-
-			// TODO remove?
-			f_close(&fp);
-
 			return;
 		}
-
-		// TODO remove?
-		f_close(&fp);
 	}
 	else if (config_hdd[hdd_id].size > 0) // native card access
 	{
@@ -1037,27 +964,24 @@ uint8_t hdd_init(void)
 	// TODO: this is currently unused, which is bad
 	hdd_error = 0;
 
-	FIL fp;
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
 		{
-			res = f_open(&fp, config_hdd[i].filename, FA_READ);
+			res = f_open(&(config_hdd[i].fp), config_hdd[i].filename, FA_READ | FA_WRITE);
 			if (res)
 			{
 				debug(DEBUG_HDD_MOUNT_FAILED);
-				f_close(&fp);
 				return 0;
 			}
 			
 			uint32_t size;
-			size = f_size(&fp);
+			size = f_size(&(config_hdd[i].fp));
 			size >>= 9; // in 512 byte sectors
 			if (size > 0)
 			{
 				config_hdd[i].size = size;
 			}
-			f_close(&fp);
 		}
 	}
 

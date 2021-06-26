@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "lib/inih/ini.h"
-#include "lib/ff/ff.h"
 #include "config.h"
 #include "debug.h"
 
