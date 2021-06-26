@@ -524,7 +524,7 @@ void link_main(void)
 			case 0x0A: // "Send Packet"
 				link_send_packet(cmd);
 				break;
-			
+			case 0x0C: // Per Anodyne spec, this is set interface mode/change Mac.  Doesn't seem to be a permanent change so ignored.
 				link_change_mac();
 				break;
 			case 0x09: 
@@ -547,7 +547,6 @@ void link_main(void)
 			case 0x00: // TEST UNIT READY
 			case 0x02: // From Nuvolink - not observed with Daynaport so essentially ignored but left in as doesn't seem to cause any issue.
 			case 0x0E: // Observed with Daynaport, Seems to be enable/disable interface per Anodyne spec but I always have interface enabled.
-			case 0x0C: // Per Anodyne spec, this is set interface mode/change Mac.  Doesn't seem to be a permanent change so ignored.
 			case 0x06: // From Nuvolink - not observed with Daynaport so essentially ignored but left in as doesn't seem to cause any issue.
 			case 0x1C: // From Nuvolink - not observed with Daynaport so essentially ignored but left in as doesn't seem to cause any issue.
 			case 0x1D: // From Nuvolink - not observed with Daynaport so essentially ignored but left in as doesn't seem to cause any issue.
