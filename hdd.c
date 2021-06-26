@@ -363,7 +363,6 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
 			FIL fp;
-			uint8_t buffer[512];
 
 			// if virtual HDD is not already open, do so now
 			res = f_open(&fp, config_hdd[hdd_id].filename, FA_WRITE);
@@ -400,16 +399,7 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 			}
 
 			// write to card
-			//res = pf_mwrite(phy_data_ask_block, op.length, &act_len);
-			uint16_t bw;
-			for (uint16_t i = 0; i < op.length && (! res); i++)
-			{
-				if (phy_data_ask_block(buffer))
-				{
-					res = f_write(&fp, buffer, 512, &bw);
-					act_len++;
-				}
-			}
+			res = f_mwrite(&fp, phy_data_ask_block, op.length, &act_len);
 
 			// TODO remove?
 			f_close(&fp);

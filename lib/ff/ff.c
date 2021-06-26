@@ -4131,8 +4131,94 @@ FRESULT f_mwrite (
 	UINT* sw				/* Number of sectors written */
 )
 {
-	// TODO implement
-	return RES_OK;
+	FRESULT res;
+	FATFS *fs;
+	DWORD clst;
+	LBA_t sect;
+	UINT cc, csect;
+
+	*sw = 0;	/* Clear write byte counter */
+	res = validate(&fp->obj, &fs);			/* Check validity of the file object */
+	if (res != FR_OK || (res = (FRESULT)fp->err) != FR_OK) LEAVE_FF(fs, res);	/* Check validity */
+	if (!(fp->flag & FA_WRITE)) LEAVE_FF(fs, FR_DENIED);	/* Check access mode */
+
+	/* refuse to proceed if cache is dirty, or if we are not on a sector boundary */
+	if (fp->fptr % SS(fs) != 0) LEAVE_FF(fs, FR_NOT_SYNCED);
+#if FF_FS_TINY
+	if (fs->wflag) LEAVE_FF(fs, FR_NOT_SYNCED);
+#else
+	if (fp->flag & FA_DIRTY) LEAVE_FF(fs, FR_NOT_SYNCED);
+#endif
+
+	/* Check fptr wrap-around (file size cannot reach 4 GiB at FAT volume) */
+	if ((!FF_FS_EXFAT || fs->fs_type != FS_EXFAT) && (DWORD)(fp->fptr + stw * SS(fs)) < (DWORD)fp->fptr) {
+		stw = ((UINT)(0xFFFFFFFF - (DWORD)fp->fptr)) / SS(fs);
+	}
+
+	for ( ; stw > 0; stw -= cc, *sw += cc, fp->fptr += cc * SS(fs), fp->obj.objsize = (fp->fptr > fp->obj.objsize) ? fp->fptr : fp->obj.objsize) {	/* Repeat until all data written */
+		csect = (UINT)(fp->fptr / SS(fs)) & (fs->csize - 1);	/* Sector offset in the cluster */
+		if (csect == 0) {				/* On the cluster boundary? */
+			if (fp->fptr == 0) {		/* On the top of the file? */
+				clst = fp->obj.sclust;	/* Follow from the origin */
+				if (clst == 0) {		/* If no cluster is allocated, */
+					clst = create_chain(&fp->obj, 0);	/* create a new cluster chain */
+				}
+			} else {					/* On the middle or end of the file */
+#if FF_USE_FASTSEEK
+				if (fp->cltbl) {
+					clst = clmt_clust(fp, fp->fptr);	/* Get cluster# from the CLMT */
+				} else
+#endif
+				{
+					clst = create_chain(&fp->obj, fp->clust);	/* Follow or stretch cluster chain on the FAT */
+				}
+			}
+			if (clst == 0) break;		/* Could not allocate a new cluster (disk full) */
+			if (clst == 1) ABORT(fs, FR_INT_ERR);
+			if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
+			fp->clust = clst;			/* Update current cluster */
+			if (fp->obj.sclust == 0) fp->obj.sclust = clst;	/* Set start cluster if the first write */
+		}
+#if FF_FS_TINY
+		if (fs->winsect == fp->sect && sync_window(fs) != FR_OK) ABORT(fs, FR_DISK_ERR);	/* Write-back sector cache */
+#else
+		if (fp->flag & FA_DIRTY) {		/* Write-back sector cache */
+			if (disk_write(fs->pdrv, fp->buf, fp->sect, 1) != RES_OK) ABORT(fs, FR_DISK_ERR);
+			fp->flag &= (BYTE)~FA_DIRTY;
+		}
+#endif
+		sect = clst2sect(fs, fp->clust);	/* Get current sector */
+		if (sect == 0) ABORT(fs, FR_INT_ERR);
+		sect += csect;
+		cc = stw;
+		if (cc > 0) {					/* Write maximum contiguous sectors directly */
+			if (csect + cc > fs->csize) {	/* Clip at cluster boundary */
+				cc = fs->csize - csect;
+			}
+			if (disk_write_multi(fs->pdrv, func, sect, cc) != RES_OK) ABORT(fs, FR_DISK_ERR);
+#if FF_FS_MINIMIZE <= 2
+#if FF_FS_TINY
+			if (fs->winsect - sect < cc) {	/* Refill sector cache if it gets invalidated by the direct write */
+				/* not available in memory, read directly off disk */
+				//memcpy(fs->win, wbuff + ((fs->winsect - sect) * SS(fs)), SS(fs));
+				disk_read(fs->pdrv, fs->win, fs->winsect, 1);
+				fs->wflag = 0;
+			}
+#else
+			if (fp->sect - sect < cc) { /* Refill sector cache if it gets invalidated by the direct write */
+				/* not available in memory, read directly off disk */
+				//memcpy(fp->buf, wbuff + ((fp->sect - sect) * SS(fs)), SS(fs));
+				disk_read(fs->pdrv, fp->buf, fp->sect, 1);
+				fp->flag &= (BYTE)~FA_DIRTY;
+			}
+#endif
+#endif
+		}
+	}
+
+	fp->flag |= FA_MODIFIED;				/* Set file change flag */
+
+	LEAVE_FF(fs, FR_OK);
 }
 
 
