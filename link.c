@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 saybur
+ * Copyright (C) 2019-2021 saybur
  * 
  * This file is part of scuznet.
  * 
@@ -17,7 +17,6 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <avr/pgmspace.h>
 #include <util/delay.h>
 #include "config.h"
 #include "debug.h"
@@ -30,7 +29,7 @@
 
 // the response we always send to RECEIVE DIAGNOSTIC RESULTS
 #define DIAGNOSTIC_RESULTS_LENGTH 32
-const uint8_t diagnostic_results[] PROGMEM = {
+static const __flash uint8_t diagnostic_results[] = {
 	0x43, 0x21, 0x53, 0x02, 0x40, 0x00, 0x00, 0x00,
 	0x08, 0x89, 0x12, 0x04, 0x43, 0x02, 0x40, 0x00,
 	0x00, 0x00, 0x08, 0x89, 0x12, 0x04, 0x43, 0x02,
@@ -41,27 +40,13 @@ const uint8_t diagnostic_results[] PROGMEM = {
 #define MAC_ROM_OFFSET        36
 #define MAC_CONFIG_OFFSET     56
 
-static uint8_t inquiry_data[96] = {
-	// bytes 0-35 are the standard inquiry data
+// Nuvolink-compatible INQUIRY header response
+static const __flash uint8_t inquiry_data[36] = {
 	0x09, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00,
 	'N', 'u', 'v', 'o', 't', 'e', 'c', 'h',
 	'N', 'u', 'v', 'o', 'S', 'C', 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	'1', '.', '1', 'r',
-	// 36-95 are the extended page 2 stuff
-	// ROM MAC
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	// 14 bytes of 0x00
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	// configured MAC
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	// 34 bytes of 0x00
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00
+	'1', '.', '1', 'r'
 };
 
 /*
@@ -85,6 +70,10 @@ static uint8_t rx_packet_id = 0;
 
 // the value we use as a flag to see if we need to ask for a reselection
 static uint8_t asked_for_reselection = 0;
+
+// the "ROM" (configuration file) and dynamically configured MAC addresses
+static uint8_t mac_rom[6];
+static uint8_t mac_dyn[6];
 
 /*
  * ============================================================================
@@ -112,60 +101,98 @@ static void link_send_diagnostic(uint8_t* cmd)
 
 static void link_inquiry(uint8_t* cmd)
 {
-	// we ignore page code and rely on allocation length only for deciding
-	// what to send, so find that first
+	/*
+	 * We ignore page code and rely on allocation length only for deciding
+	 * what to send, so find that first.
+	 */
 	uint16_t alloc = ((cmd[3] & 1) << 8) + cmd[4];
-	if (alloc >= 96)
+	if (debug_enabled())
+	{
+		debug(DEBUG_LINK_INQUIRY);
+		if (debug_verbose())
+		{
+			debug_dual(alloc >> 8, alloc);
+		}
+	}
+
+	// first 36 bytes
+	if (alloc > 0)
 	{
 		phy_phase(PHY_PHASE_DATA_IN);
-		for (uint8_t i = 0; i < 96; i++)
+
+		// do first 36 bytes of pre-programmed INQUIRY
+		uint8_t limit = 36;
+		if (limit > alloc) limit = (uint8_t) alloc;
+		for (uint8_t i = 0; i < limit; i++)
 		{
 			phy_data_offer(inquiry_data[i]);
 		}
-		if (alloc >= 292)
-		{
-			// bus statistics
-			phy_data_offer(0x04);
-			phy_data_offer(0xD2);
-			for (uint8_t i = 0; i < 86; i++)
-			{
-				phy_data_offer(0x00);
-			}
-			// bus errors
-			phy_data_offer(0x09);
-			phy_data_offer(0x29);
-			for (uint8_t i = 0; i < 58; i++)
-			{
-				phy_data_offer(0x00);
-			}
-			// network statistics
-			phy_data_offer(0x0D);
-			phy_data_offer(0x80);
-			for (uint8_t i = 0; i < 14; i++)
-			{
-				phy_data_offer(0x00);
-			}
-			// network errors
-			phy_data_offer(0x11);
-			phy_data_offer(0xD7);
-			for (uint8_t i = 0; i < 30; i++)
-			{
-				phy_data_offer(0x00);
-			}
-		}
-		if (phy_is_atn_asserted())
-		{
-			logic_message_out();
-		}
-	}
-	else
-	{
-		logic_data_in(inquiry_data, (uint8_t) alloc);
 	}
 
+	// next 60 bytes
+	if (alloc >= 96)
+	{
+		// 6 bytes of ROM MAC
+		for (uint8_t i = 0; i < 6; i++)
+		{
+			phy_data_offer(mac_rom[i]);
+		}
+		// 14 bytes of 0x00
+		for (uint8_t i = 0; i < 14; i++)
+		{
+			phy_data_offer(0x00);
+		}
+		// 6 bytes of dynamic MAC
+		for (uint8_t i = 0; i < 6; i++)
+		{
+			phy_data_offer(mac_dyn[i]);
+		}
+		// 34 bytes of 0x00
+		for (uint8_t i = 0; i < 34; i++)
+		{
+			phy_data_offer(0x00);
+		}
+	}
+
+	// next 196
+	if (alloc >= 292)
+	{
+		// bus statistics
+		phy_data_offer(0x04);
+		phy_data_offer(0xD2);
+		for (uint8_t i = 0; i < 86; i++)
+		{
+			phy_data_offer(0x00);
+		}
+		// bus errors
+		phy_data_offer(0x09);
+		phy_data_offer(0x29);
+		for (uint8_t i = 0; i < 58; i++)
+		{
+			phy_data_offer(0x00);
+		}
+		// network statistics
+		phy_data_offer(0x0D);
+		phy_data_offer(0x80);
+		for (uint8_t i = 0; i < 14; i++)
+		{
+			phy_data_offer(0x00);
+		}
+		// network errors
+		phy_data_offer(0x11);
+		phy_data_offer(0xD7);
+		for (uint8_t i = 0; i < 30; i++)
+		{
+			phy_data_offer(0x00);
+		}
+	}
+
+	if (phy_is_atn_asserted())
+	{
+		logic_message_out();
+	}
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-	debug(DEBUG_LINK_INQUIRY);
 }
 
 static void link_change_mac(uint8_t* cmd)
@@ -420,16 +447,11 @@ void link_init(uint8_t* mac, uint8_t target)
 {
 	target_mask = target;
 
-	// assign MAC address information into the INQUIRY data.
-	uint8_t idx = MAC_ROM_OFFSET;
+	// assign MAC address information
 	for (uint8_t i = 0; i < 6; i++)
 	{
-		inquiry_data[idx++] = mac[i];
-	}
-	idx = MAC_CONFIG_OFFSET;
-	for (uint8_t i = 0; i < 6; i++)
-	{
-		inquiry_data[idx++] = mac[i];
+		mac_rom[i] = mac[i];
+		mac_dyn[i] = mac[i];
 	}
 }
 
