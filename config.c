@@ -194,6 +194,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	if (res)
 	{
 		debug(DEBUG_CONFIG_FILE_MISSING);
+		f_close(&fil);
 		return CONFIG_NOFILE;
 	}
 
@@ -203,6 +204,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 		debug(DEBUG_CONFIG_FILE_MISSING);
 		result = CONFIG_NOLOAD;
 	}
+	f_close(&fil);
 
 	/*
 	 * Calculate the PHY masks requested from the configuration file, and
