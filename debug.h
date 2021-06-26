@@ -95,8 +95,8 @@
 #define led_off()             LED_PORT.DIR &= ~LED_PIN;
 
 // alias for use below
-#define debug_enabled()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_DEBUG)
-#define debug_verbose()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_VERBOSE)
+#define debug_enabled()      1// (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_DEBUG)
+#define debug_verbose()      1// (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_VERBOSE)
 
 #ifdef DEBUGGING
 static inline __attribute__((always_inline)) void debug(uint8_t v)

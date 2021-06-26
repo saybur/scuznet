@@ -232,7 +232,6 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 		if (config_hdd[hdd_id].filename != NULL) // filesystem virtual HDD
 		{
 			FIL fp;
-			uint8_t buffer[512];
 
 			// if virtual HDD is not already open, do so now
 			res = f_open(&fp, config_hdd[hdd_id].filename, FA_READ);
@@ -269,14 +268,7 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 			}
 
 			// read from card
-			//res = pf_mread(phy_data_offer_block, op.length, &act_len);
-			uint16_t br;
-			for (uint16_t i = 0; i < op.length && (! res); i++)
-			{
-				res = f_read(&fp, buffer, 512, &br);
-				if (! res) phy_data_offer_block(buffer);
-				act_len++;
-			}
+			res = f_mread(&fp, phy_data_offer_block, op.length, &act_len);
 
 			// TODO remove?
 			f_close(&fp);
@@ -284,7 +276,7 @@ static void hdd_read(uint8_t hdd_id, uint8_t* cmd)
 		else if (config_hdd[hdd_id].size > 0) // native card access
 		{
 			uint32_t offset = config_hdd[hdd_id].size + op.lba;
-			res = disk_read_multi(phy_data_offer_block, offset, op.length);
+			res = disk_read_multi(0, phy_data_offer_block, offset, op.length);
 			if (! res) act_len = op.length;
 		}
 		else
@@ -425,7 +417,7 @@ static void hdd_write(uint8_t hdd_id, uint8_t* cmd)
 		else if (config_hdd[hdd_id].size > 0) // native card access
 		{
 			uint32_t offset = config_hdd[hdd_id].size + op.lba;
-			res = disk_write_multi(phy_data_ask_block, offset, op.length);
+			res = disk_write_multi(0, phy_data_ask_block, offset, op.length);
 			if (! res) act_len = op.length;
 		}
 		else

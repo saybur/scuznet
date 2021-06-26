@@ -39,6 +39,15 @@
 #include "./lib/ff/ff.h"
 #include "./lib/ff/diskio.h"
 #include "config.h"
+#include "debug.h"
+
+/*
+ * We require the sector size to be fixed at 512 bytes. Without this, the
+ * multi-block functions will not operate correctly.
+ */
+#if FF_MIN_SS != 512 || FF_MAX_SS != 512
+	#error "FF_MIN_SS and FF_MAX_SS must both be 512"
+#endif
 
 #define cs_assert()         (MEM_PORT.OUTCLR = MEM_PIN_CS)
 #define cs_release()        (MEM_PORT.OUTSET = MEM_PIN_CS)
@@ -424,16 +433,16 @@ DRESULT disk_read(
 	return count ? RES_ERROR : RES_OK;
 }
 
-#include "debug.h"
-
 DRESULT disk_read_multi (
+	BYTE pdrv,
 	BYTE (*func)(BYTE*),
-	DWORD sector,
+	LBA_t sector,
 	UINT count
 )
 {
 	DRESULT res = RES_OK;
 
+	if (pdrv != 0) return RES_NOTRDY;
 	if (card_status & STA_NOINIT) return RES_NOTRDY;
 	if (! count) return RES_PARERR;
 	
@@ -619,11 +628,13 @@ DRESULT disk_write (
 }
 
 DRESULT disk_write_multi (
+	BYTE pdrv,
 	BYTE (*func)(BYTE*),
-	DWORD sector,
+	LBA_t sector,
 	UINT count
 )
 {
+	if (pdrv != 0) return RES_NOTRDY;
 	if (card_status & STA_NOINIT) return RES_NOTRDY;
 	if (! count) return RES_PARERR;
 	

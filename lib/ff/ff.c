@@ -3946,8 +3946,62 @@ FRESULT f_mread (
 	UINT* sr				/* Number of sectors to read */
 )
 {
-	// TODO implement
-	return RES_OK;
+	FRESULT res;
+	FATFS *fs;
+	DWORD clst;
+	LBA_t sect;
+	FSIZE_t remain;
+	UINT cc, csect;
+
+	*sr = 0;	/* Clear read byte counter */
+	res = validate(&fp->obj, &fs);				/* Check validity of the file object */
+	if (res != FR_OK || (res = (FRESULT)fp->err) != FR_OK) LEAVE_FF(fs, res);	/* Check validity */
+	if (!(fp->flag & FA_READ)) LEAVE_FF(fs, FR_DENIED); /* Check access mode */
+	remain = (fp->obj.objsize - fp->fptr) / SS(fs);
+	if (str > remain) str = (UINT)remain;		/* Truncate str by remaining sectors */
+
+	/* refuse to proceed if cache is dirty, or if we are not on a sector boundary */
+	if (fp->fptr % SS(fs) != 0) LEAVE_FF(fs, FR_NOT_SYNCED);
+#if FF_FS_TINY
+	if (fs->wflag) LEAVE_FF(fs, FR_NOT_SYNCED);
+#else
+	if (fp->flag & FA_DIRTY) LEAVE_FF(fs, FR_NOT_SYNCED);
+#endif
+
+	for ( ; str > 0; str -= cc, *sr += cc, fp->fptr += cc * SS(fs)) {	/* Repeat until str sectors read */
+		csect = (UINT)(fp->fptr / SS(fs) & (fs->csize - 1));	/* Sector offset in the cluster */
+		if (csect == 0) {					/* On the cluster boundary? */
+			if (fp->fptr == 0) {			/* On the top of the file? */
+				clst = fp->obj.sclust;		/* Follow cluster chain from the origin */
+			} else {						/* Middle or end of the file */
+#if FF_USE_FASTSEEK
+				if (fp->cltbl) {
+					clst = clmt_clust(fp, fp->fptr);	/* Get cluster# from the CLMT */
+				} else
+#endif
+				{
+					clst = get_fat(&fp->obj, fp->clust);	/* Follow cluster chain on the FAT */
+				}
+			}
+			if (clst < 2) ABORT(fs, FR_INT_ERR);
+			if (clst == 0xFFFFFFFF) ABORT(fs, FR_DISK_ERR);
+			fp->clust = clst;				/* Update current cluster */
+		}
+		sect = clst2sect(fs, fp->clust);	/* Get current sector */
+		if (sect == 0) ABORT(fs, FR_INT_ERR);
+		sect += csect;
+		cc = str;
+		if (cc > 0) {						/* Read maximum contiguous sectors directly */
+			if (csect + cc > fs->csize) {	/* Clip at cluster boundary */
+				cc = fs->csize - csect;
+			}
+			if (disk_read_multi(fs->pdrv, func, sect, cc) != RES_OK) ABORT(fs, FR_DISK_ERR);
+		} else {
+			break;
+		}
+	}
+
+	LEAVE_FF(fs, FR_OK);
 }
 
 
