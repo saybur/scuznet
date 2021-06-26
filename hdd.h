@@ -47,6 +47,12 @@
  * WRITE(10)            (0x2A)
  */
 
+typedef enum {
+	HDD_OK = 0,
+	HDD_NOINIT,
+	HDD_ERROR
+} HDDSTATE;
+
 /*
  * Called when the memory card has been mounted and is ready to go. This
  * will read the configuration information and set itself up appropriately.
@@ -56,15 +62,9 @@
 uint8_t hdd_init(void);
 
 /*
- * Provides whether or not the memory card has experienced a major error.
- * This is not for when the card is busy, but rather when the card outright
- * rejects a command when it really ought not to or does something else
- * ill-behaved. This may be used in the main loop to help indicate failure
- * to the user beyond just the debugging system.
- * 
- * Once set this is not unset until hdd_set_ready() is called again.
+ * Provides the current state of the hard drive subsystem.
  */
-uint8_t hdd_has_error(void);
+HDDSTATE hdd_state(void);
 
 /*
  * Called whenever the PHY detects that the hard drive has been selected. This

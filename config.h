@@ -76,7 +76,7 @@ typedef enum {
  */
 typedef struct ENETConfig_t {
 	uint8_t id;                 // disabled when set to 255
-	uint8_t mask;				// the bitmask for the above ID
+	uint8_t mask;               // the bitmask for the above ID
 	uint8_t mac[6];
 } ENETConfig;
 extern ENETConfig config_enet;
@@ -86,10 +86,10 @@ extern ENETConfig config_enet;
  */
 typedef struct HDDConfig_t {
 	uint8_t id;                 // disabled when set to 255
-	uint8_t mask;				// the bitmask for the above ID
-	char* filename;
-	uint32_t start;
-	uint32_t size;
+	uint8_t mask;               // the bitmask for the above ID
+	char* filename;             // if !=NULL, FAT filename for volume
+	uint32_t start;	            // if !=0, start sector for raw volumes
+	uint32_t size;              // size of HDD in sectors
 	FIL fp;
 } HDDConfig;
 extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
