@@ -125,9 +125,36 @@ static uint8_t mac_dyn[6];
 
 /*
  * ============================================================================
- * 
+ *   UTILITY FUNCTIONS
+ * ============================================================================
+ */
+
+static void link_send_packet(uint16_t length)
+{
+	if (length > MAXIMUM_TRANSFER_LENGTH) length = MAXIMUM_TRANSFER_LENGTH;
+
+	// get devices in the right mode for a data transfer
+	phy_phase(PHY_PHASE_DATA_OUT);
+	net_move_txpt(txbuf);
+	enc_write_start();
+
+	// write the status byte
+	while (! (ENC_USART.STATUS & USART_DREIF_bm));
+	ENC_USART.DATA = 0x00;
+
+	// transfer raw data, which happens to match the needed format (yay)
+	phy_data_ask_stream(&ENC_USART, length);
+
+	// instruct network chip to send the packet
+	while (! (ENC_USART.STATUS & USART_TXCIF_bm));
+	enc_data_end();
+	net_transmit(txbuf, length + 1);
+	txbuf = txbuf ? 0 : 1;
+}
+
+/*
+ * ============================================================================
  *   OPERATION HANDLERS
- * 
  * ============================================================================
  * 
  * Each of these gets called from the _main() function to perform a particular
@@ -321,29 +348,6 @@ static void link_set_filter(uint8_t* cmd)
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-}
-
-static void link_send_packet(uint16_t length)
-{
-	if (length > MAXIMUM_TRANSFER_LENGTH) length = MAXIMUM_TRANSFER_LENGTH;
-
-	// get devices in the right mode for a data transfer
-	phy_phase(PHY_PHASE_DATA_OUT);
-	net_move_txpt(txbuf);
-	enc_write_start();
-
-	// write the status byte
-	while (! (ENC_USART.STATUS & USART_DREIF_bm));
-	ENC_USART.DATA = 0x00;
-
-	// transfer raw data, which happens to match the needed format (yay)
-	phy_data_ask_stream(&ENC_USART, length);
-
-	// instruct network chip to send the packet
-	while (! (ENC_USART.STATUS & USART_TXCIF_bm));
-	enc_data_end();
-	net_transmit(txbuf, length + 1);
-	txbuf = txbuf ? 0 : 1;
 }
 
 static void link_send_packet_cmd(uint8_t* cmd)
