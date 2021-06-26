@@ -112,8 +112,13 @@
 /     0 - Include all code pages above and configured by f_setcp()
 */
 
-
-#define FF_USE_LFN		0
+// scuznet change: this auto-toggles LFN based on MCU memory capacity
+#ifdef __AVR_ATxmega64A3U__
+	#define FF_USE_LFN		0
+#else
+	#define FF_USE_LFN		1
+#endif
+//#define FF_USE_LFN		0
 #define FF_MAX_LFN		255
 /* The FF_USE_LFN switches the support for LFN (long file name).
 /
@@ -230,8 +235,13 @@
 /  Instead of private sector buffer eliminated from the file object, common sector
 /  buffer in the filesystem object (FATFS) is used for the file data transfer. */
 
-
-#define FF_FS_EXFAT		0
+// scuznet change: this auto-toggles exFAT support based on MCU memory capacity
+#ifdef __AVR_ATxmega64A3U__
+	#define FF_FS_EXFAT		0
+#else
+	#define FF_FS_EXFAT		1
+#endif
+//#define FF_FS_EXFAT		0
 /* This option switches support for exFAT filesystem. (0:Disable or 1:Enable)
 /  To enable exFAT, also LFN needs to be enabled. (FF_USE_LFN >= 1)
 /  Note that enabling exFAT discards ANSI C (C89) compatibility. */

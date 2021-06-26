@@ -12,6 +12,8 @@ caution.
 Changes
 -------
 
+### DMA
+
 The normal FatFs library typically fills a large contiguous buffer before
 returning the data all in one go to the caller. This is great if you have a
 RTOS and/or lots of memory, neither of which this project has.
@@ -59,6 +61,14 @@ These calls error out with `FR_MISALIGNED` if the file pointer is not on a
 sector boundary when they are invoked. They will also error with
 `FR_NOT_SYNCED` if there is a partial sector stored within the FatFs; if that
 is possible invoke `f_sync()` prior to use.
+
+### exFAT / Long File Name Support
+
+Earlier versions of the scuznet design suggested the ATxmega64A3U, which is too
+small for exFAT / LFN support. `ffconf.h` has had preprocessor defines added
+that will enable both options if the microcontroller is *not* the 64A3U.
+
+### Sector Size Limit
 
 This code relies on sector sizes being equal to 512 bytes. This is enforced via
 a check in the `disk.c` implementation.
