@@ -295,12 +295,7 @@ void logic_data_out_dummy(uint8_t);
  * see the underlying methods in the PHY code, which should offer better
  * performance.
  */
-void logic_data_in(uint8_t*, uint8_t);
-
-/*
- * As above, but for use with PROGMEM arrays.
- */
-void logic_data_in_pgm(const uint8_t*, uint8_t);
+void logic_data_in(const uint8_t*, uint8_t);
 
 /*
  * ============================================================================

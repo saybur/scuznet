@@ -17,7 +17,6 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <avr/pgmspace.h>
 #include "config.h"
 #include "debug.h"
 #include "init.h"
@@ -30,7 +29,7 @@
  * This is used to prevent having to overwrite the entire sense data array
  * whenever it is reset.
  */
-const uint8_t sense_data_no_sense[] PROGMEM = {
+static const __flash uint8_t sense_data_no_sense[] = {
 	0xF0, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
@@ -43,14 +42,14 @@ const uint8_t sense_data_no_sense[] PROGMEM = {
  * 
  * The sense data has ILLEGAL REQUEST, along with LOGICAL UNIT NOT SUPPORTED.
  */
-const uint8_t sense_data_illegal_lun[] PROGMEM = {
+static const __flash uint8_t sense_data_illegal_lun[] = {
 	0xF0, 0x00, 0x05, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x25, 0x00, 0x00, 0x00,
 	0x00, 0x00
 };
-const uint8_t inquiry_data_illegal_lun[] PROGMEM = {
+static const __flash uint8_t inquiry_data_illegal_lun[] = {
 	0x7F, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00,
 	' ', 'i', 'n', 'v', 'a', 'l', 'i', 'd',
 	' ', 'b', 'a', 'd', ' ', 'l', 'u', 'n',
@@ -349,7 +348,7 @@ uint8_t logic_command(uint8_t* command)
 			uint8_t alloc = command[4];
 			if (alloc > 36)
 				alloc = 36;
-			logic_data_in_pgm(inquiry_data_illegal_lun, alloc);
+			logic_data_in(inquiry_data_illegal_lun, alloc);
 			logic_status(LOGIC_STATUS_GOOD);
 		}
 		else if (command[0] == 0x03) // REQUEST SENSE
@@ -357,7 +356,7 @@ uint8_t logic_command(uint8_t* command)
 			uint8_t alloc = command[4];
 			if (alloc > 18)
 				alloc = 18;
-			logic_data_in_pgm(sense_data_illegal_lun, alloc);
+			logic_data_in(sense_data_illegal_lun, alloc);
 			logic_status(LOGIC_STATUS_GOOD);
 		}
 		else
@@ -450,7 +449,7 @@ void logic_data_out_dummy(uint8_t len)
 	}
 }
 
-void logic_data_in(uint8_t* data, uint8_t len)
+void logic_data_in(const uint8_t* data, uint8_t len)
 {
 	if (! phy_is_active()) return;
 
@@ -458,21 +457,6 @@ void logic_data_in(uint8_t* data, uint8_t len)
 	for (uint8_t i = 0; i < len; i++)
 	{
 		phy_data_offer(data[i]);
-	}
-	if (phy_is_atn_asserted())
-	{
-		logic_message_out();
-	}
-}
-
-void logic_data_in_pgm(const uint8_t* data, uint8_t len)
-{
-	if (! phy_is_active()) return;
-
-	phy_phase(PHY_PHASE_DATA_IN);
-	for (uint8_t i = 0; i < len; i++)
-	{
-		phy_data_offer(pgm_read_byte(&(data[i])));
 	}
 	if (phy_is_atn_asserted())
 	{
@@ -571,7 +555,7 @@ void logic_request_sense(uint8_t* cmd)
 	}
 	else
 	{
-		logic_data_in_pgm(sense_data_no_sense, alloc);
+		logic_data_in(sense_data_no_sense, alloc);
 	}
 
 	logic_status(LOGIC_STATUS_GOOD);

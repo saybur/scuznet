@@ -128,12 +128,54 @@ static uint8_t asked_for_reselection = 0;
 static uint8_t mac_rom[6];
 static uint8_t mac_dyn[6];
 
+// if true, allow in AppleTalk multicast traffic
+static uint8_t allow_atalk;
+
 /*
  * ============================================================================
  *   UTILITY FUNCTIONS
  * ============================================================================
  */
 
+/*
+ * Starts a ENC28J60 read operation, reads the packet into the internal buffer,
+ * and processes it into the net_header struct. The read operation is left open
+ * after the end of this call.
+ */
+static void link_read_packet_header(void)
+{
+	enc_read_start();
+	for (uint8_t i = 0; i < 6; i++)
+	{
+		read_buffer[i] = enc_swap(0xFF);
+	}
+	net_process_header(read_buffer, &net_header);
+}
+
+/*
+ * Ends a ENC28J60 read operation, skipping to the next packet. This is the
+ * complement to the above call, to be used after it when the packet is
+ * determined to be unimportant.
+ */
+static void link_skip_packet(void)
+{
+	link_read_packet_header();
+	enc_data_end();
+
+	// skip it without reading
+	net_move_rxpt(net_header.next_packet, 1);
+	enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
+}
+
+/*
+ * Switches to DATA OUT, receives a packet from the initiator, and writes it
+ * to the Ethernet chip directly, handling switching between the two transmit
+ * buffers inside the ENC28J60.
+ * 
+ * The given length is the packet that should be written. Both link devices
+ * kindly provide exactly the right information for this chip, so streaming
+ * directly into the ENC28J60 is fine.
+ */
 static void link_send_packet(uint16_t length)
 {
 	if (length > MAXIMUM_TRANSFER_LENGTH)
@@ -167,7 +209,7 @@ static void link_send_packet(uint16_t length)
  * task on either the device or the PHY.
  */
 
-static void link_send_diagnostic(uint8_t* cmd)
+static void link_cmd_send_diagnostic(uint8_t* cmd)
 {
 	// we basically ignore this command
 	uint16_t alloc = (cmd[3] << 8) + cmd[4];
@@ -180,7 +222,7 @@ static void link_send_diagnostic(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void link_inquiry(uint8_t* cmd)
+static void link_cmd_inquiry(uint8_t* cmd)
 {
 	/*
 	 * We ignore page code and rely on allocation length only for deciding
@@ -293,7 +335,7 @@ static void link_inquiry(uint8_t* cmd)
 }
 
 // TODO actually implement
-static void link_change_mac(uint8_t* cmd)
+static void link_cmd_change_mac(uint8_t* cmd)
 {
 	// fetch requested MAC address
 	uint8_t alloc = 0;
@@ -318,7 +360,28 @@ static void link_change_mac(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void link_set_filter(uint8_t* cmd)
+static void link_cmd_dayna_statistics(uint8_t* cmd)
+{
+	(void) cmd; // silence compiler
+
+	phy_phase(PHY_PHASE_DATA_IN);
+
+	// send MAC, then 3x DWORD 0x0 values
+	phy_data_offer_bulk(mac_dyn, 6);
+	for (uint8_t i = 0; i < 12; i++)
+	{
+		phy_data_offer(0x00);
+	}
+
+	if (phy_is_atn_asserted())
+	{
+		logic_message_out();
+	}
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
+static void link_cmd_nuvo_filter(uint8_t* cmd)
 {
 	uint8_t data[8] = {0}; // init to 0x00 on all
 	uint8_t alloc = cmd[4];
@@ -347,21 +410,17 @@ static void link_set_filter(uint8_t* cmd)
 	if (data[7] & 0x80)
 	{
 		// accept unicast and multicast (inclusive of broadcast)
-		enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_CRCEN_bm
 			| ENC_MCEN_bm);
-		enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 		debug(DEBUG_LINK_RX_FILTER_MULTICAST);
 	}
 	else
 	{
 		// just accept unicast and broadcast
-		enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_BCEN_bm
 			| ENC_CRCEN_bm);
-		enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 		debug(DEBUG_LINK_RX_FILTER_UNICAST);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
@@ -370,7 +429,67 @@ static void link_set_filter(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void link_send_packet_cmd(uint8_t* cmd)
+static void link_cmd_dayna_filter(uint8_t* cmd)
+{
+	/*
+	 * The DaynaPort driver sends command 0D to tell the unit what types of
+	 * packets to accept. The length field of the 0D command indicates how
+	 * many packet filters will be sent. The accept our MAC and broadcast
+	 * seems to be generally of the form 01 00 5E 00 00 01 whereas accept
+	 * AppleTalk packets will be 09 00 07 FF FF FF. The below loops through
+	 * the packet filter information sent and if 09 (i.e. accept AppleTalk)
+	 * is in any of the first byte positions of the packet filter
+	 * information it allows Appletalk packets.
+	 * 
+	 * Note that emulating this behaviour does not seem to be strictly
+	 * necessary. It IS necessary to read all of the bytes sent with the 0D
+	 * command (otherwise Appletalk will fail to activate) but this behaviour
+	 * is being emulated to match the actual system behaviour as closely as
+	 * possible.
+	 */
+
+	uint16_t alloc = (cmd[3] << 8) + cmd[4];
+	uint8_t param_set = 0;
+	allow_atalk = 0;
+
+	phy_phase(PHY_PHASE_DATA_OUT);
+	for (uint16_t i = 0; i < alloc; i++)
+	{
+		// I've only ever seen two packet filters sent but this allows for 3
+		// (i.e. activate Appletalk in position 1, 2 or 3)
+		param_set = phy_data_ask();
+		if ((i == 0 && param_set == 0x09)
+				|| (i == 6 && param_set == 0x09)
+				|| (i == 12 && param_set == 0x09))
+		{
+			allow_atalk = 1;
+		}
+	}
+
+	enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
+	if (allow_atalk)
+	{
+		// accept unicast and multicast (inclusive of broadcast)
+		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
+			| ENC_CRCEN_bm
+			| ENC_MCEN_bm);
+		debug(DEBUG_LINK_RX_FILTER_MULTICAST);
+	}
+	else
+	{
+		// just accept unicast and broadcast
+		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
+			| ENC_BCEN_bm
+			| ENC_CRCEN_bm);
+		debug(DEBUG_LINK_RX_FILTER_UNICAST);
+	}
+	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
+
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
+static void link_cmd_nuvo_send(uint8_t* cmd)
 {
 	debug(DEBUG_LINK_TX_REQUESTED);
 
@@ -382,17 +501,33 @@ static void link_send_packet_cmd(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void link_read_packet_header(void)
+static void link_cmd_dayna_send(uint8_t* cmd)
 {
-	enc_read_start();
-	for (uint8_t i = 0; i < 6; i++)
+	debug(DEBUG_LINK_TX_REQUESTED);
+
+	uint16_t length = ((cmd[3]) << 8) + cmd[4];
+
+	if (cmd[5] == 0x80)
 	{
-		read_buffer[i] = enc_swap(0xFF);
+		// for the XX=80, all I have ever seen is where LLLL = PPPP
+		phy_phase(PHY_PHASE_DATA_OUT);
+		for (uint8_t i = 0; i < 4; i++) phy_data_ask();
 	}
-	net_process_header(read_buffer, &net_header);
+
+	link_send_packet(length);
+
+	if (cmd[5] == 0x80)
+	{
+		// trash trailing 4x 0x00
+		phy_phase(PHY_PHASE_DATA_OUT);
+		for (uint8_t i = 0; i < 4; i++) phy_data_ask();
+	}
+
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void link_read_packet(void)
+static void link_nuvo_read_packet(void)
 {
 	link_read_packet_header();
 
@@ -442,17 +577,7 @@ static void link_read_packet(void)
 	enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
 }
 
-static void link_skip_packet(void)
-{
-	link_read_packet_header();
-	enc_data_end();
-
-	// then skip it without reading
-	net_move_rxpt(net_header.next_packet, 1);
-	enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
-}
-
-static uint16_t link_message_out_post_rx(void)
+static uint16_t link_nuvo_message_out_post_rx(void)
 {
 	if (! phy_is_active()) return 0;
 
@@ -516,6 +641,206 @@ static uint16_t link_message_out_post_rx(void)
 	}
 }
 
+static void link_cmd_dayna_read(uint8_t* cmd)
+{
+	debug(DEBUG_LINK_RX_STARTING);
+
+	uint16_t transfer_length = ((cmd[3]) << 8) + cmd[4];
+	if (transfer_length == 1)
+	{
+		logic_status(LOGIC_STATUS_GOOD);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		return;
+	}
+
+	/*
+	 * Read number of read packets from packet counter. Appears this needs
+	 * to occur before the header is read and the ENC switches to read_start
+	 * mode.
+	 */
+	uint8_t total_packets = 0;
+	enc_cmd_read(ENC_EPKTCNT, &total_packets);
+	uint8_t packet_counter = total_packets;
+
+	if (total_packets == 0)
+	{
+		// send "No Packets" message
+		phy_phase(PHY_PHASE_DATA_IN);
+		for (uint8_t i = 0; i < 6; i++)
+		{
+			phy_data_offer(0x00);
+		}
+	}
+	else
+	{
+		uint8_t dest[6];
+		uint8_t found_packet = 0;
+		do
+		{
+			// get packet header and destination MAC
+			link_read_packet_header();
+			for (uint8_t i = 0; i < 6; i++)
+			{
+				dest[i] = enc_swap(0xFF);
+			}
+
+			// unicast?
+			if (dest[0] == mac_dyn[0]
+					&& dest[1] == mac_dyn[1]
+					&& dest[2] == mac_dyn[2]
+					&& dest[3] == mac_dyn[3]
+					&& dest[4] == mac_dyn[4]
+					&& dest[5] == mac_dyn[5])
+			{
+				found_packet = 1;
+				break;
+			}
+
+			// broadcast?
+			if (dest[0] == 0xFF
+					&& dest[1] == 0xFF
+					&& dest[2] == 0xFF
+					&& dest[3] == 0xFF
+					&& dest[4] == 0xFF
+					&& dest[5] == 0xFF)
+			{
+				found_packet = 1;
+				break;
+			}
+
+			// AppleTalk multicast?
+			if (allow_atalk)
+			{
+				if (dest[0] == 0x09
+					&& dest[1] == 0x00
+					&& dest[2] == 0x07)
+				{
+					if (dest[3] == 0x00
+						&& dest[4] == 0x00)
+					{
+						found_packet = 1;
+						break;
+					}
+					else if (dest[3] == 0xFF
+						&& dest[4] == 0xFF
+						&& dest[5] == 0xFF)
+					{
+						found_packet = 1;
+						break;
+					}
+				}
+			}
+
+			// Did not find a packet that matches our filters (own MAC address,
+			// ATalk Multicast or Broadcast), so move to next packet
+			enc_data_end();
+			net_move_rxpt(net_header.next_packet, 1);
+			enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
+		}
+		while (--packet_counter);
+
+		if (found_packet == 0)
+		{
+			// send "No Packets" message
+			phy_phase(PHY_PHASE_DATA_IN);
+			for (uint8_t i = 0; i < 6; i++)
+			{
+				phy_data_offer(0x00);
+			}
+		}
+		else // Found a packet to send
+		{
+			/*
+			 * Move the length bytes into the correct position. The length
+			 * bytes for both Daynaport and Nuvolink seem to be the same -
+			 * length of the payload excluding length and flag bytes, except
+			 * little endian vs big endian.
+			 */
+			read_buffer[0] = read_buffer[3];
+			read_buffer[1] = read_buffer[2];
+			uint16_t data_length = (read_buffer[0] << 8)
+					+ read_buffer[1];
+			read_buffer[2] = 0x00;
+			read_buffer[3] = 0x00;
+			read_buffer[4] = 0x00;
+
+			/*
+			 * Flagging another byte as waiting does make a big difference in
+			 * transfer speeds (5.4mb FILE 3:03 VS 3:35). Per the driver docs,
+			 * a 0x10 means there is another packet ready to be read.
+			 * Presumably this means the driver doesn't just wait for it's
+			 * polling interval to elapse before asking for another packet.
+			 */
+			if (packet_counter > 1)
+			{
+				read_buffer[5] = 0x10;
+			}
+			else
+			{
+				read_buffer[5] = 0x00;
+			}
+
+			// 1500 packet + 4 CRC + 12 Address + 2 Len/Type
+			if (data_length > 1518) data_length = 1518;
+			/*
+			 * Ensure data length isn't more than the amount the driver
+			 * said it can read (although this always seems to be 0x05F4
+			 * which is 1524 which is 1518 + the 6 driver preamble bytes)
+			 */
+			if (data_length > (transfer_length - 6))
+			{
+				data_length = transfer_length - 6;
+			}
+
+			phy_phase(PHY_PHASE_DATA_IN);
+
+			// send the header
+			for (uint16_t i = 0; i < 6; i++)
+			{
+				phy_data_offer(read_buffer[i]);
+			}
+
+			/*
+			 * This pause necessary for the driver to properly read the
+			 * packets. It might need to have time to parse the length out
+			 * before reading the rest of it. 30us - 60us seemed to work
+			 * reliably on my SE/30.  The SE did not work with 40 or 60 but
+			 * did with 100.  There doesn't seem to be an significant
+			 * performance penalty but there is a significant increase in
+			 * compatibility.
+			 */
+			_delay_us(100);
+
+			// send Dest MAC information already read for filter purposes
+			for (uint16_t i = 0; i < 6; i++)
+			{
+				phy_data_offer(dest[i]);
+			}
+
+			/*
+			 * Send packet to computer, calling the version that doesn't
+			 * check for /ATN as it seems to run about 15% faster (/ATN check
+			 * eats a few cycles). Send packet, substracting 6 from the
+			 * length to account for MAC Address info already sent.
+			 */
+			phy_data_offer_stream(&ENC_USART, data_length - 6);
+
+			// move to next packet
+			enc_data_end();
+			net_move_rxpt(net_header.next_packet, 1);
+			enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
+		}
+	}
+
+	// Close out transaction
+	if (phy_is_atn_asserted())
+	{
+		logic_message_out();
+	}
+	logic_status(LOGIC_STATUS_GOOD);
+	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+}
+
 /*
  * ============================================================================
  *   EXTERNAL FUNCTIONS
@@ -524,7 +849,7 @@ static uint16_t link_message_out_post_rx(void)
 
 void link_init(uint8_t* mac, uint8_t target)
 {
-	link_type = LINK_NUVO;
+	link_type = LINK_DAYNA;
 	target_mask = target;
 
 	// assign MAC address information
@@ -615,10 +940,10 @@ uint8_t link_main(void)
 				// nothing to transmit, just send the pending packet
 				debug(DEBUG_LINK_RX_PACKET_START);
 				//_delay_us(150);
-				link_read_packet();
+				link_nuvo_read_packet();
 				debug(DEBUG_LINK_RX_PACKET_DONE);
 				//_delay_us(100);
-				txreq = link_message_out_post_rx();
+				txreq = link_nuvo_message_out_post_rx();
 			}
 		}
 		asked_for_reselection = 0;
@@ -652,24 +977,24 @@ uint8_t link_main(void)
 					logic_request_sense(cmd);
 					break;
 				case 0x05: // "Send Packet"
-					link_send_packet_cmd(cmd);
+					link_cmd_nuvo_send(cmd);
 					break;
 				case 0x06: // "Change MAC"
-					link_change_mac(cmd);
+					link_cmd_change_mac(cmd);
 					break;
 				case 0x09: // "Set Filter"
-					link_set_filter(cmd);
+					link_cmd_nuvo_filter(cmd);
 					break;
 				case 0x12: // INQUIRY
-					link_inquiry(cmd);
+					link_cmd_inquiry(cmd);
 					break;
 				case 0x1C: // RECEIVE DIAGNOSTIC
-					logic_data_in_pgm(diagnostic_results, DIAGNOSTIC_RESULTS_LENGTH);
+					logic_data_in(diagnostic_results, DIAGNOSTIC_RESULTS_LENGTH);
 					logic_status(LOGIC_STATUS_GOOD);
 					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 					break;
 				case 0x1D: // SEND DIAGNOSTIC
-					link_send_diagnostic(cmd);
+					link_cmd_send_diagnostic(cmd);
 					break;
 				case 0x00: // TEST UNIT READY
 				case 0x08: // GET MESSAGE(6)
@@ -693,18 +1018,18 @@ uint8_t link_main(void)
 					logic_request_sense(cmd);
 					break;
 				case 0x08: // GET MESSAGE(6)
-					// TODO implement
+					link_cmd_dayna_read(cmd);
 					break;
 				case 0x09: // "Retrieve Statistics"
-					link_set_filter(cmd);
+					link_cmd_dayna_statistics(cmd);
 					break;
 				case 0x0A: // SEND MESSAGE(6)
-					// TODO implement
+					link_cmd_dayna_send(cmd);
 					break;
 				case 0x0C:
 					if (cmd[5] == 0x40)  // "Change MAC"
 					{
-						link_change_mac(cmd);
+						link_cmd_change_mac(cmd);
 					}
 					else  // "Set Interface Mode"
 					{
@@ -714,7 +1039,7 @@ uint8_t link_main(void)
 					}
 					break;
 				case 0x0D: // "Set multicast filtering (?)"
-					// TODO implement
+					link_cmd_dayna_filter(cmd);
 					break;
 				case 0x0E: // "Enable/Disable Interface"
 					// leave on all the time
@@ -722,7 +1047,7 @@ uint8_t link_main(void)
 					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 					break;
 				case 0x12: // INQUIRY
-					link_inquiry(cmd);
+					link_cmd_inquiry(cmd);
 					break;
 				case 0x00: // TEST UNIT READY
 					logic_status(LOGIC_STATUS_GOOD);
