@@ -44,7 +44,10 @@ static void main_handle(void)
 		if (target == config_enet.mask)
 		{
 			searching = 0;
-			link_main();
+			if (! link_main(i))
+			{
+				searching = 1;
+			}
 		}
 		for (uint8_t i = 0; i < HARD_DRIVE_COUNT && searching; i++)
 		{
