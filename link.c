@@ -519,6 +519,7 @@ static uint16_t link_message_out_post_rx(void)
 
 void link_init(uint8_t* mac, uint8_t target)
 {
+	link_type = LINK_NUVO;
 	target_mask = target;
 
 	// assign MAC address information
