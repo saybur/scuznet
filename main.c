@@ -44,7 +44,7 @@ static void main_handle(void)
 		if (target == config_enet.mask)
 		{
 			searching = 0;
-			if (! link_main(i))
+			if (! link_main())
 			{
 				searching = 1;
 			}
