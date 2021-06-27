@@ -379,14 +379,10 @@ static void link_send_packet_cmd(uint8_t* cmd)
 static void link_read_packet_header(void)
 {
 	enc_read_start();
-	ENC_USART.DATA = 0xFF;
-	while (! (ENC_USART.STATUS & USART_RXCIF_bm));
-	ENC_USART.DATA; // junk RBM response
+	enc_swap(0xFF); // junk RBM response
 	for (uint8_t i = 0; i < 6; i++)
 	{
-		ENC_USART.DATA = 0xFF;
-		while (! (ENC_USART.STATUS & USART_RXCIF_bm));
-		read_buffer[i] = ENC_USART.DATA;
+		read_buffer[i] = enc_swap(0xFF);
 	}
 	net_process_header(read_buffer, &net_header);
 }
@@ -418,9 +414,7 @@ static void link_read_packet(void)
 	 */
 	for (uint8_t i = 4; i < 18; i++)
 	{
-		ENC_USART.DATA = 0xFF;
-		while (! (ENC_USART.STATUS & USART_RXCIF_bm));
-		read_buffer[i] = ENC_USART.DATA;
+		read_buffer[i] = enc_swap(0xFF);
 	}
 
 	// send initial data
@@ -519,9 +513,7 @@ static uint16_t link_message_out_post_rx(void)
 
 /*
  * ============================================================================
- * 
  *   EXTERNAL FUNCTIONS
- * 
  * ============================================================================
  */
 
@@ -539,6 +531,9 @@ void link_init(uint8_t* mac, uint8_t target)
 
 void link_check_rx(void)
 {
+	// only the Nuvo protocol needs this
+	if (link_type != LINK_NUVO) return;
+
 	// abort if we have not hit the disconnection delay
 	if (! (PHY_TIMER_DISCON.INTFLAGS & PHY_TIMER_DISCON_OVF))
 	{

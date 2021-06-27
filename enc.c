@@ -152,6 +152,14 @@ void enc_init(void)
 	ENC_USART.CTRLB = USART_RXEN_bm | USART_TXEN_bm;
 }
 
+uint8_t enc_swap(uint8_t tx)
+{
+	while (! (ENC_USART.STATUS & USART_DREIF_bm));
+	ENC_USART.DATA = tx;
+	while (! (ENC_USART.STATUS & USART_RXCIF_bm));
+	return ENC_USART.DATA;
+}
+
 void enc_cmd_read(uint8_t reg, uint8_t* response)
 {
 	uint8_t arg = reg & 0x1F;

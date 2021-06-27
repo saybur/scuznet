@@ -335,6 +335,12 @@
 void enc_init(void);
 
 /*
+ * Sends the given byte to the device, returning the result. This should be
+ * used when in a data mode only.
+ */
+uint8_t enc_swap(uint8_t);
+
+/*
  * Register operations, as defined in 4.2. Most accept a data value to send to
  * the device, except for reading, which returns information in the given
  * pointer.
