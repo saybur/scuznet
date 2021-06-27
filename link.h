@@ -86,7 +86,9 @@ void link_check_rx(void);
  * Called whenever the PHY detects that the link device has been selected, or
  * has managed to make a reconnection to the initiator. This will proceed
  * through the bus phases as needed.
+ * 
+ * Returns false when the caller needs to hang up the bus.
  */
-void link_main(void);
+uint8_t link_main(void);
 
 #endif /* LINK_H */

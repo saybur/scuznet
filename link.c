@@ -286,16 +286,28 @@ static void link_inquiry(uint8_t* cmd)
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
+// TODO actually implement
 static void link_change_mac(uint8_t* cmd)
 {
-	// TODO actually implement
-
-	uint8_t alloc = cmd[4];
-	phy_phase(PHY_PHASE_DATA_OUT);
-	for (uint8_t i = 0; i < alloc; i++)
+	// fetch requested MAC address
+	uint8_t alloc = 0;
+	if (link_type == LINK_NUVO)
 	{
-		phy_data_ask();
+		alloc = cmd[4];
 	}
+	else if (link_type == LINK_DAYNA)
+	{
+		alloc = 6;
+	}
+	if (alloc > 0)
+	{
+		phy_phase(PHY_PHASE_DATA_OUT);
+		for (uint8_t i = 0; i < alloc; i++)
+		{
+			phy_data_ask();
+		}
+	}
+
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
@@ -552,11 +564,13 @@ void link_check_rx(void)
 	}
 }
 
-void link_main(void)
+uint8_t link_main(void)
 {
-	if (! logic_ready()) return;
+	if (! logic_ready()) return 0;
 	if (phy_is_continued())
 	{
+		if (link_type != LINK_NUVO) return 0;
+
 		/*
 		 * Note for below: the driver appears to be picky about timing, so we
 		 * insert various waits to make sure we don't get too far ahead of it.
@@ -619,52 +633,106 @@ void link_main(void)
 		// normal selection by initiator
 		logic_start(0, 1);
 		uint8_t cmd[10];
-		if (! logic_command(cmd)) return;
+		if (! logic_command(cmd)) return 1;
 
 		uint8_t identify = logic_identify();
 		if (identify != 0) last_identify = identify;
 
-		switch (cmd[0])
+		if (link_type == LINK_NUVO)
 		{
-			case 0x02: // "Reset Stats"
-				// at the moment, we have no stats to reset
-				logic_status(LOGIC_STATUS_GOOD);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				break;
-			case 0x03: // REQUEST SENSE
-				logic_request_sense(cmd);
-				break;
-			case 0x05: // "Send Packet"
-				link_send_packet_cmd(cmd);
-				break;
-			case 0x06: // "Change MAC"
-				link_change_mac(cmd);
-				break;
-			case 0x09: // "Set Filter"
-				link_set_filter(cmd);
-				break;
-			case 0x12: // INQUIRY
-				link_inquiry(cmd);
-				break;
-			case 0x1C: // RECEIVE DIAGNOSTIC
-				logic_data_in_pgm(diagnostic_results, DIAGNOSTIC_RESULTS_LENGTH);
-				logic_status(LOGIC_STATUS_GOOD);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				break;
-			case 0x1D: // SEND DIAGNOSTIC
-				link_send_diagnostic(cmd);
-				break;
-			case 0x00: // TEST UNIT READY
-			case 0x08: // GET MESSAGE(6)
-			case 0x0A: // SEND MESSAGE(6)
-			case 0x0C: // "Medium Sense"
-				logic_status(LOGIC_STATUS_GOOD);
-				logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-				break;
-			default:
-				logic_cmd_illegal_op(cmd[0]);
+			switch (cmd[0])
+			{
+				case 0x02: // "Reset Stats"
+					// at the moment, we have no stats to reset
+					logic_status(LOGIC_STATUS_GOOD);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					break;
+				case 0x03: // REQUEST SENSE
+					logic_request_sense(cmd);
+					break;
+				case 0x05: // "Send Packet"
+					link_send_packet_cmd(cmd);
+					break;
+				case 0x06: // "Change MAC"
+					link_change_mac(cmd);
+					break;
+				case 0x09: // "Set Filter"
+					link_set_filter(cmd);
+					break;
+				case 0x12: // INQUIRY
+					link_inquiry(cmd);
+					break;
+				case 0x1C: // RECEIVE DIAGNOSTIC
+					logic_data_in_pgm(diagnostic_results, DIAGNOSTIC_RESULTS_LENGTH);
+					logic_status(LOGIC_STATUS_GOOD);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					break;
+				case 0x1D: // SEND DIAGNOSTIC
+					link_send_diagnostic(cmd);
+					break;
+				case 0x00: // TEST UNIT READY
+				case 0x08: // GET MESSAGE(6)
+				case 0x0A: // SEND MESSAGE(6)
+				case 0x0C: // "Medium Sense"
+					logic_status(LOGIC_STATUS_GOOD);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					break;
+				default:
+					logic_cmd_illegal_op(cmd[0]);
+			}
+		}
+		else if (link_type == LINK_DAYNA)
+		{
+			switch (cmd[0])
+			{
+				case 0x03: // REQUEST SENSE
+					// per device description, alloc always mis-set to 0
+					// and the device always responds with 9 bytes
+					cmd[4] = 9;
+					logic_request_sense(cmd);
+					break;
+				case 0x08: // GET MESSAGE(6)
+					// TODO implement
+					break;
+				case 0x09: // "Retrieve Statistics"
+					link_set_filter(cmd);
+					break;
+				case 0x0A: // SEND MESSAGE(6)
+					// TODO implement
+					break;
+				case 0x0C:
+					if (cmd[5] == 0x40)  // "Change MAC"
+					{
+						link_change_mac(cmd);
+					}
+					else  // "Set Interface Mode"
+					{
+						// broadcast always on for us
+						logic_status(LOGIC_STATUS_GOOD);
+						logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					}
+					break;
+				case 0x0D: // "Set multicast filtering (?)"
+					// TODO implement
+					break;
+				case 0x0E: // "Enable/Disable Interface"
+					// leave on all the time
+					logic_status(LOGIC_STATUS_GOOD);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					break;
+				case 0x12: // INQUIRY
+					link_inquiry(cmd);
+					break;
+				case 0x00: // TEST UNIT READY
+					logic_status(LOGIC_STATUS_GOOD);
+					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+					break;
+				default:
+					logic_cmd_illegal_op(cmd[0]);
+			}
 		}
 	}
 
 	logic_done();
+	return 1;
 }
