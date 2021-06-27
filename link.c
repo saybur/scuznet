@@ -329,17 +329,21 @@ static void link_set_filter(uint8_t* cmd)
 	if (data[7] & 0x80)
 	{
 		// accept unicast and multicast (inclusive of broadcast)
+		enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_CRCEN_bm
 			| ENC_MCEN_bm);
+		enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 		debug(DEBUG_LINK_RX_FILTER_MULTICAST);
 	}
 	else
 	{
 		// just accept unicast and broadcast
+		enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_BCEN_bm
 			| ENC_CRCEN_bm);
+		enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 		debug(DEBUG_LINK_RX_FILTER_UNICAST);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
