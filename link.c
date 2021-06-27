@@ -26,7 +26,12 @@
 #include "logic.h"
 #include "net.h"
 
-#define MAXIMUM_TRANSFER_LENGTH 1522
+/*
+ * Maximum packet transfer length for all device types.
+ * This is 14 bytes of MAC header plus up to 1500 bytes of payload.
+ * See https://en.wikipedia.org/wiki/Ethernet_frame#Ethernet_II
+ */
+#define MAXIMUM_TRANSFER_LENGTH 1514
 
 // the response we always send to RECEIVE DIAGNOSTIC RESULTS
 #define DIAGNOSTIC_RESULTS_LENGTH 32
@@ -131,7 +136,10 @@ static uint8_t mac_dyn[6];
 
 static void link_send_packet(uint16_t length)
 {
-	if (length > MAXIMUM_TRANSFER_LENGTH) length = MAXIMUM_TRANSFER_LENGTH;
+	if (length > MAXIMUM_TRANSFER_LENGTH)
+	{
+		length = MAXIMUM_TRANSFER_LENGTH;
+	}
 
 	// get devices in the right mode for a data transfer
 	phy_phase(PHY_PHASE_DATA_OUT);
@@ -139,14 +147,12 @@ static void link_send_packet(uint16_t length)
 	enc_write_start();
 
 	// write the status byte
-	while (! (ENC_USART.STATUS & USART_DREIF_bm));
-	ENC_USART.DATA = 0x00;
+	enc_swap(0x00);
 
 	// transfer raw data, which happens to match the needed format (yay)
 	phy_data_ask_stream(&ENC_USART, length);
 
 	// instruct network chip to send the packet
-	while (! (ENC_USART.STATUS & USART_TXCIF_bm));
 	enc_data_end();
 	net_transmit(txbuf, length + 1);
 	txbuf = txbuf ? 0 : 1;
@@ -379,7 +385,6 @@ static void link_send_packet_cmd(uint8_t* cmd)
 static void link_read_packet_header(void)
 {
 	enc_read_start();
-	enc_swap(0xFF); // junk RBM response
 	for (uint8_t i = 0; i < 6; i++)
 	{
 		read_buffer[i] = enc_swap(0xFF);
@@ -412,16 +417,16 @@ static void link_read_packet(void)
 	 * then waits for 67us, then gets more data. We'll provide the 19 bytes via
 	 * SRAM, then pass off to the USART handler for the rest of the data.
 	 */
-	for (uint8_t i = 4; i < 18; i++)
+	for (uint8_t i = 4; i < 19; i++)
 	{
 		read_buffer[i] = enc_swap(0xFF);
 	}
 
 	// send initial data
-	uint16_t usart_len = net_header.length - 14;
+	uint16_t usart_len = net_header.length - 15;
 	phy_phase(PHY_PHASE_DATA_IN);
 	_delay_us(6);
-	phy_data_offer_bulk(read_buffer, 18);
+	phy_data_offer_bulk(read_buffer, 19);
 
 	/*
 	 * Per above note, this is when the driver pauses. Change to direct 

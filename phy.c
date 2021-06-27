@@ -478,19 +478,38 @@ void phy_data_offer_stream(USART_t* usart, uint16_t len)
 
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
+	if (len == 0) return;
 
-	for (uint16_t i = 0; i < len; i++)
+	// queue first byte
+	while (! (usart->STATUS & USART_DREIF_bm));
+	usart->DATA = 0xFF;
+
+	while (--len)
 	{
+		// queue next byte, and wait for reply from previous
+		while (! (usart->STATUS & USART_DREIF_bm));
 		usart->DATA = 0xFF;
 		while (! (usart->STATUS & USART_RXCIF_bm));
 		v = usart->DATA;
 
+		// share results with initiator
 		while (phy_is_ack_asserted());
 		phy_data_set(v);
 		req_assert();
 		while (! phy_is_ack_asserted());
 		req_release();
 	}
+
+	// fetch the last byte we sent
+	while (! (usart->STATUS & USART_RXCIF_bm));
+	v = usart->DATA;
+
+	// and share that with the initiator
+	while (phy_is_ack_asserted());
+	phy_data_set(v);
+	req_assert();
+	while (! phy_is_ack_asserted());
+	req_release();
 }
 
 void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
@@ -499,24 +518,38 @@ void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
+	if (len == 0) return;
 
-	while (len > 0 && ! phy_is_atn_asserted())
+	// queue first byte
+	while (! (usart->STATUS & USART_DREIF_bm));
+	usart->DATA = 0xFF;
+
+	while (--len && ! phy_is_atn_asserted())
 	{
+		// queue next byte, and wait for reply from previous
+		while (! (usart->STATUS & USART_DREIF_bm));
+		usart->DATA = 0xFF;
 		while (! (usart->STATUS & USART_RXCIF_bm));
 		v = usart->DATA;
-		len--;
-		if (len != 0)
-		{
-			while (! (usart->STATUS & USART_DREIF_bm));
-			usart->DATA = 0xFF;
-		}
 
+		// share results with initiator
 		while (phy_is_ack_asserted());
 		phy_data_set(v);
 		req_assert();
 		while ((! phy_is_atn_asserted()) && (! phy_is_ack_asserted()));
 		req_release();
 	}
+
+	// fetch the last byte we sent
+	while (! (usart->STATUS & USART_RXCIF_bm));
+	v = usart->DATA;
+
+	// and share that with the initiator
+	while (phy_is_ack_asserted());
+	phy_data_set(v);
+	req_assert();
+	while ((! phy_is_atn_asserted()) && (! phy_is_ack_asserted()));
+	req_release();
 }
 
 uint8_t phy_data_ask(void)
@@ -595,8 +628,10 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 	// guard against calling when not in control
 	// note that ISR has the opposite guard
 	if (! phy_is_active()) return;
+	if (len == 0) return;
 
-	for (uint16_t i = 0; i < len; i++)
+	uint8_t not_first = 0;
+	do
 	{
 		// verify the initiator has released /ACK
 		while (phy_is_ack_asserted());
@@ -604,13 +639,10 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 		req_assert();
 		// wait for initiator to give us the data
 		while (! (phy_is_ack_asserted()));
-
 		// read data from the bus
 		v = phy_data_get();
-
 		// let the initiator know we got the information
 		req_release();
-
 		// get the true data value, if needed
 		#ifdef PHY_PORT_DATA_IN_REVERSED
 			v = phy_reverse_table[v];
@@ -619,7 +651,22 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 		// write to the USART once it is ready
 		while (! (usart->STATUS & USART_DREIF_bm));
 		usart->DATA = v;
+		// wait for the previous byte to arrive, then pitch it
+		if (not_first)
+		{
+			while (! (usart->STATUS & USART_RXCIF_bm));
+			usart->DATA;
+		}
+		else
+		{
+			not_first = 1;
+		}
 	}
+	while (--len);
+
+	// get the response to the previous byte
+	while (! (usart->STATUS & USART_RXCIF_bm));
+	usart->DATA;
 }
 
 void phy_phase(uint8_t new_phase)

@@ -409,29 +409,22 @@ uint8_t enc_phy_scan(uint8_t phy_register)
 void enc_read_start(void)
 {
 	ENC_PORT.OUTCLR = ENC_PIN_CS;
-	ENC_USART.DATA = ENC_OP_RBM;
+	enc_swap(ENC_OP_RBM);
 }
 
 void enc_write_start(void)
 {
-	ENC_USART.CTRLB &= ~USART_RXEN_bm;
 	ENC_PORT.OUTCLR = ENC_PIN_CS;
-	ENC_USART.DATA = ENC_OP_WBM;
+	enc_swap(ENC_OP_WBM);
 }
 
 void enc_data_end(void)
 {
+	// wait in case there are remaining values in progress
 	while (! (ENC_USART.STATUS & USART_TXCIF_bm));
-	if (ENC_USART.CTRLB & USART_RXEN_bm)
+	while (ENC_USART.STATUS & USART_RXCIF_bm)
 	{
-		while (ENC_USART.STATUS & USART_RXCIF_bm)
-		{
-			ENC_USART.DATA;
-		}
-	}
-	else
-	{
-		ENC_USART.CTRLB |= USART_RXEN_bm;
+		ENC_USART.DATA;
 	}
 	ENC_PORT.OUTSET = ENC_PIN_CS;
 }

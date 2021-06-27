@@ -198,22 +198,14 @@ uint8_t phy_data_offer_block(uint8_t*);
  * initiator.
  * 
  * The connected USART device needs to be in a form of an auto-increment mode
- * pointing at the correct location, with exactly 1 byte waiting in the
- * reception queue from that location. The length given should be for the total
- * length, including that 1 byte.
- * 
- * This will push the given number of bytes into the device, which will end up
- * leaving one additional byte in the RX queue.
+ * pointing at the correct location. This will exchange the given number of
+ * bytes with the remote device.
  */
 void phy_data_offer_stream(USART_t*, uint16_t);
 
 /*
  * Specialized version of _offer_stream(), for use with the link device. This
- * version does two things differently:
- * 
- * 1) It will not push an additional byte into the USART at the end of the
- *    transmission, and
- * 2) It will eagerly abort if /ATN becomes asserted.
+ * version will eagerly abort if /ATN becomes asserted.
  */
 void phy_data_offer_stream_atn(USART_t*, uint16_t);
 
@@ -240,16 +232,9 @@ uint8_t phy_data_ask_block(uint8_t*);
  * given USART.
  * 
  * The connected USART device needs to be in a form of an auto-increment mode
- * pointing at the correct location. Calling this with a length of more than
- * one or two bytes will likely cause the USART RX buffer to overflow, which
- * is not checked here.
+ * pointing at the correct location.
  */
 void phy_data_ask_stream(USART_t*, uint16_t);
-
-/*
- * As above, but for fixed lengths of 512 bytes.
- */
-void phy_data_ask_stream_block(USART_t*);
 
 /*
  * ============================================================================
