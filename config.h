@@ -29,6 +29,7 @@
 #else
 	#error "You must define a hardware revision, like -DHW_V01"
 #endif
+#include "link.h"
 
 /*
  * This file defines global built-in configuration values and the hardware
@@ -77,6 +78,7 @@ typedef enum {
 typedef struct ENETConfig_t {
 	uint8_t id;                 // disabled when set to 255
 	uint8_t mask;               // the bitmask for the above ID
+	LINKTYPE type;
 	uint8_t mac[6];
 } ENETConfig;
 extern ENETConfig config_enet;

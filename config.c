@@ -23,7 +23,7 @@
 #include "config.h"
 #include "debug.h"
 
-ENETConfig config_enet = { 255, 0, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
+ENETConfig config_enet = { 255, 0, LINK_NONE, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
 HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 /*
@@ -79,6 +79,23 @@ static int config_handler(
 			}
 			return 1;
 		}
+		else if (strcmp(name, "driver") == 0)
+		{
+			if (strcmp(value, "nuvo") == 0)
+			{
+				config_enet.type = LINK_NUVO;
+				return 1;
+			}
+			else if (strcmp(value, "dayna") == 0)
+			{
+				config_enet.type = LINK_DAYNA;
+				return 1;
+			}
+			else
+			{
+				return 0;
+			}
+		}
 		else if (strcmp(name, "mac") == 0)
 		{
 			int v;
@@ -94,6 +111,10 @@ static int config_handler(
 				tok = strtok(NULL, ":");
 			}
 			free(copy);
+
+			// disable the multicast bit if set
+			config_enet.mac[0] &= ~1;
+
 			return 1;
 		}
 		else
@@ -211,7 +232,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	 * finish configuring the hard drives based on the requested values.
 	 */
 	uint8_t used_masks = 0x80; // reserve ID 7 for initiator
-	if (config_enet.id < 7)
+	if (config_enet.id < 7 && config_enet.type != LINK_NONE)
 	{
 		config_enet.mask = 1 << config_enet.id;
 		used_masks |= config_enet.mask;

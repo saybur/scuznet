@@ -60,12 +60,10 @@ typedef enum {
 } LINKTYPE;
 
 /*
- * Initializes the emulated link device. This should be given a six-byte array
- * with the MAC address, as well as a mask with only 1 bit set for the target
- * that this device will obey. This function should only be called once at
- * startup.
+ * Initializes the emulated link device using the configuration subsystem
+ * data. This function should only be called once, at startup.
  */
-void link_init(uint8_t*, uint8_t);
+void link_init(void);
 
 /*
  * Checks the network device for pending packets.

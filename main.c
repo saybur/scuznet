@@ -133,7 +133,7 @@ int main(void)
 	{
 		// only enable networking if asked
 		net_setup(config_enet.mac);
-		link_init(config_enet.mac, config_enet.mask);
+		link_init();
 	}
 	if (! hdd_init())
 	{

@@ -99,15 +99,6 @@ static const __flash uint8_t inquiry_data_d[255] = {
 	0x00,0x00,0x00 //3 bytes
 };
 
-// the type of link device being emulated
-static LINKTYPE link_type;
-
-/*
- * The target mask for this device, and the IDs that will block reselection if
- * detected during reselection on the bus.
- */
-static uint8_t target_mask;
-
 // the selector for the TX buffer space
 static uint8_t txbuf;
 
@@ -244,7 +235,7 @@ static void link_cmd_inquiry(uint8_t* cmd)
 		// allow flow-through to completion
 	}
 	// otherwise switch behavior based on device type
-	else if (link_type == LINK_NUVO)
+	else if (config_enet.type == LINK_NUVO)
 	{
 		phy_phase(PHY_PHASE_DATA_IN);
 
@@ -314,7 +305,7 @@ static void link_cmd_inquiry(uint8_t* cmd)
 			}
 		}
 	}
-	else if (link_type == LINK_DAYNA)
+	else if (config_enet.type == LINK_DAYNA)
 	{
 		phy_phase(PHY_PHASE_DATA_IN);
 
@@ -339,11 +330,11 @@ static void link_cmd_change_mac(uint8_t* cmd)
 {
 	// fetch requested MAC address
 	uint8_t alloc = 0;
-	if (link_type == LINK_NUVO)
+	if (config_enet.type == LINK_NUVO)
 	{
 		alloc = cmd[4];
 	}
-	else if (link_type == LINK_DAYNA)
+	else if (config_enet.type == LINK_DAYNA)
 	{
 		alloc = 6;
 	}
@@ -413,7 +404,7 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_CRCEN_bm
 			| ENC_MCEN_bm);
-		debug(DEBUG_LINK_RX_FILTER_MULTICAST);
+		debug(DEBUG_LINK_FILTER_MULTICAST);
 	}
 	else
 	{
@@ -421,7 +412,7 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_BCEN_bm
 			| ENC_CRCEN_bm);
-		debug(DEBUG_LINK_RX_FILTER_UNICAST);
+		debug(DEBUG_LINK_FILTER_UNICAST);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 
@@ -473,7 +464,7 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_CRCEN_bm
 			| ENC_MCEN_bm);
-		debug(DEBUG_LINK_RX_FILTER_MULTICAST);
+		debug(DEBUG_LINK_FILTER_MULTICAST);
 	}
 	else
 	{
@@ -481,7 +472,7 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
 			| ENC_BCEN_bm
 			| ENC_CRCEN_bm);
-		debug(DEBUG_LINK_RX_FILTER_UNICAST);
+		debug(DEBUG_LINK_FILTER_UNICAST);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 
@@ -643,11 +634,10 @@ static uint16_t link_nuvo_message_out_post_rx(void)
 
 static void link_cmd_dayna_read(uint8_t* cmd)
 {
-	debug(DEBUG_LINK_RX_STARTING);
-
-	uint16_t transfer_length = ((cmd[3]) << 8) + cmd[4];
-	if (transfer_length == 1)
+	uint16_t allocation = ((cmd[3]) << 8) + cmd[4];
+	if (allocation == 1)
 	{
+		debug(DEBUG_LINK_RX_SKIP);
 		logic_status(LOGIC_STATUS_GOOD);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return;
@@ -665,6 +655,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	if (total_packets == 0)
 	{
 		// send "No Packets" message
+		debug(DEBUG_LINK_RX_NO_DATA);
 		phy_phase(PHY_PHASE_DATA_IN);
 		for (uint8_t i = 0; i < 6; i++)
 		{
@@ -673,6 +664,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	}
 	else
 	{
+		debug(DEBUG_LINK_RX_STARTING);
 		uint8_t dest[6];
 		uint8_t found_packet = 0;
 		do
@@ -742,6 +734,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		if (found_packet == 0)
 		{
 			// send "No Packets" message
+			debug(DEBUG_LINK_RX_PACKET_DROPPED);
 			phy_phase(PHY_PHASE_DATA_IN);
 			for (uint8_t i = 0; i < 6; i++)
 			{
@@ -750,16 +743,24 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		}
 		else // Found a packet to send
 		{
+			if (debug_enabled())
+			{
+				debug(DEBUG_LINK_RX_PACKET_START);
+				if (debug_verbose())
+				{
+					// report packet length
+					debug_dual(read_buffer[2], read_buffer[3]);
+				}
+			}
+
 			/*
 			 * Move the length bytes into the correct position. The length
 			 * bytes for both Daynaport and Nuvolink seem to be the same -
 			 * length of the payload excluding length and flag bytes, except
 			 * little endian vs big endian.
 			 */
-			read_buffer[0] = read_buffer[3];
-			read_buffer[1] = read_buffer[2];
-			uint16_t data_length = (read_buffer[0] << 8)
-					+ read_buffer[1];
+			read_buffer[0] = (uint8_t) (net_header.length >> 8);
+			read_buffer[1] = (uint8_t) net_header.length;
 			read_buffer[2] = 0x00;
 			read_buffer[3] = 0x00;
 			read_buffer[4] = 0x00;
@@ -780,16 +781,14 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 				read_buffer[5] = 0x00;
 			}
 
-			// 1500 packet + 4 CRC + 12 Address + 2 Len/Type
-			if (data_length > 1518) data_length = 1518;
 			/*
 			 * Ensure data length isn't more than the amount the driver
 			 * said it can read (although this always seems to be 0x05F4
 			 * which is 1524 which is 1518 + the 6 driver preamble bytes)
 			 */
-			if (data_length > (transfer_length - 6))
+			if (net_header.length > allocation - 6)
 			{
-				data_length = transfer_length - 6;
+				net_header.length = allocation - 6;
 			}
 
 			phy_phase(PHY_PHASE_DATA_IN);
@@ -819,16 +818,27 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 
 			/*
 			 * Send packet to computer, calling the version that doesn't
-			 * check for /ATN as it seems to run about 15% faster (/ATN check
-			 * eats a few cycles). Send packet, substracting 6 from the
-			 * length to account for MAC Address info already sent.
+			 * check for /ATN as it seems to run about 15% faster. Send packet,
+			 * substracting 6 from the length to account for MAC Address info
+			 * already sent.
 			 */
-			phy_data_offer_stream(&ENC_USART, data_length - 6);
+			phy_data_offer_stream(&ENC_USART, net_header.length - 6);
 
 			// move to next packet
 			enc_data_end();
 			net_move_rxpt(net_header.next_packet, 1);
 			enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
+			if (debug_enabled())
+			{
+				if (read_buffer[5] == 0x10)
+				{
+					debug(DEBUG_LINK_RX_PACKET_DONE_MORE_WAITING);
+				}
+				else
+				{
+					debug(DEBUG_LINK_RX_PACKET_DONE);
+				}
+			}
 		}
 	}
 
@@ -847,23 +857,28 @@ static void link_cmd_dayna_read(uint8_t* cmd)
  * ============================================================================
  */
 
-void link_init(uint8_t* mac, uint8_t target)
+void link_init()
 {
-	link_type = LINK_DAYNA;
-	target_mask = target;
-
-	// assign MAC address information
-	for (uint8_t i = 0; i < 6; i++)
+	if (config_enet.id < 7 && (config_enet.type == LINK_NUVO ||
+			config_enet.type == LINK_DAYNA))
 	{
-		mac_rom[i] = mac[i];
-		mac_dyn[i] = mac[i];
+		for (uint8_t i = 0; i < 6; i++)
+		{
+			mac_rom[i] = config_enet.mac[i];
+			mac_dyn[i] = config_enet.mac[i];
+		}
+	}
+	else
+	{
+		config_enet.id = 255;
+		config_enet.type = LINK_NONE;
 	}
 }
 
 void link_check_rx(void)
 {
 	// only the Nuvo protocol needs this
-	if (link_type != LINK_NUVO) return;
+	if (config_enet.type != LINK_NUVO) return;
 
 	// abort if we have not hit the disconnection delay
 	if (! (PHY_TIMER_DISCON.INTFLAGS & PHY_TIMER_DISCON_OVF))
@@ -878,7 +893,7 @@ void link_check_rx(void)
 			if (! asked_for_reselection)
 			{
 				debug(DEBUG_LINK_RX_ASKING_RESEL);
-				phy_reselect(target_mask);
+				phy_reselect(config_enet.mask);
 				asked_for_reselection = 1;
 			}
 		}
@@ -893,9 +908,11 @@ void link_check_rx(void)
 uint8_t link_main(void)
 {
 	if (! logic_ready()) return 0;
+	if (config_enet.id == 255) return 0;
 	if (phy_is_continued())
 	{
-		if (link_type != LINK_NUVO) return 0;
+		// reselection is only supported on the Nuvo device
+		if (config_enet.type != LINK_NUVO) return 0;
 
 		/*
 		 * Note for below: the driver appears to be picky about timing, so we
@@ -964,7 +981,7 @@ uint8_t link_main(void)
 		uint8_t identify = logic_identify();
 		if (identify != 0) last_identify = identify;
 
-		if (link_type == LINK_NUVO)
+		if (config_enet.type == LINK_NUVO)
 		{
 			switch (cmd[0])
 			{
@@ -1007,7 +1024,7 @@ uint8_t link_main(void)
 					logic_cmd_illegal_op(cmd[0]);
 			}
 		}
-		else if (link_type == LINK_DAYNA)
+		else if (config_enet.type == LINK_DAYNA)
 		{
 			switch (cmd[0])
 			{
