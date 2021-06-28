@@ -1006,7 +1006,7 @@ uint8_t link_main(void)
 					link_cmd_inquiry(cmd);
 					break;
 				case 0x1C: // RECEIVE DIAGNOSTIC
-					logic_data_in(diagnostic_results, DIAGNOSTIC_RESULTS_LENGTH);
+					logic_data_in_pgm(diagnostic_results, DIAGNOSTIC_RESULTS_LENGTH);
 					logic_status(LOGIC_STATUS_GOOD);
 					logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 					break;

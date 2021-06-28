@@ -18,7 +18,6 @@
  */
 
 #include <stdlib.h>
-#include <avr/pgmspace.h>
 #include <util/delay.h>
 #include "lib/ff/ff.h"
 #include "lib/ff/diskio.h"
@@ -31,7 +30,7 @@
  * Defines the standard response we provide when asked to give INQUIRY data.
  */
 #define HDD_INQUIRY_LENGTH 36
-const uint8_t inquiry_data[] PROGMEM = {
+static const __flash uint8_t inquiry_data[] = {
 	0x00, 0x00, 0x02, 0x02,
 	0x1F, 0x00, 0x00, 0x00,
 	' ', 's', 'c', 'u', 'z', 'n', 'e', 't',
@@ -185,7 +184,7 @@ static void hdd_cmd_inquiry()
 	if (alloc > HDD_INQUIRY_LENGTH)
 		alloc = HDD_INQUIRY_LENGTH;
 
-	logic_data_in(inquiry_data, alloc);
+	logic_data_in_pgm(inquiry_data, alloc);
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }

@@ -298,6 +298,11 @@ void logic_data_out_dummy(uint8_t);
 void logic_data_in(const uint8_t*, uint8_t);
 
 /*
+ * As above, but sends data in flash memory to the initiator.
+ */
+void logic_data_in_pgm(const __flash uint8_t*, uint8_t);
+
+/*
  * ============================================================================
  * 
  *   SENSE KEY / ERROR REPORTING FUNCTIONS
