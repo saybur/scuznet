@@ -189,12 +189,17 @@ static int config_handler(
 		{
 			if (strcmp(value, "fast") == 0)
 			{
-				config_hdd[hddsel].mode = 1;
+				config_hdd[hddsel].mode = HDD_MODE_FAST;
+				return 1;
+			}
+			if (strcmp(value, "forcefast") == 0)
+			{
+				config_hdd[hddsel].mode = HDD_MODE_FORCEFAST;
 				return 1;
 			}
 			else if (strcmp(value, "normal") == 0)
 			{
-				config_hdd[hddsel].mode = 0;
+				config_hdd[hddsel].mode = HDD_MODE_NORMAL;
 				return 1;
 			}
 			else
@@ -231,7 +236,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 		config_hdd[i].filename = NULL;
 		config_hdd[i].start = 0;
 		config_hdd[i].size = 0;
-		config_hdd[i].mode = 0;
+		config_hdd[i].mode = HDD_MODE_NORMAL;
 	}
 	
 	*target_masks = 0;

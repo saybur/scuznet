@@ -963,30 +963,33 @@ uint8_t hdd_init(void)
 			 * We can enable much faster performance if the file is contiguous,
 			 * and thus supporting low-level access that bypasses the FAT
 			 * layer.
-			 * 
-			 * TODO: this needs better reporting for users.
 			 */
-			if (config_hdd[i].mode != 0)
+			uint8_t contiguous = 0;
+			if (config_hdd[i].mode == HDD_MODE_FORCEFAST)
 			{
-				uint8_t c;
-				res = f_contiguous(fp, &c);
+				// they asked us not to check...
+				contiguous = 1;
+			}
+			else if (config_hdd[i].mode == HDD_MODE_FAST)
+			{
+				// check if contiguous
+				res = f_contiguous(fp, &contiguous);
 				if (res)
 				{
 					debug_dual(DEBUG_HDD_SEEK_ERROR, res);
 					return 0;
 				}
-				if (c)
-				{
-					/*
-					 * The file is contiguous, so it should be safe to enable
-					 * low-level access. To figure out the start sector, we
-					 * force a seek one byte into the first sector, which
-					 * triggers a memory card read and fp->sect to be set.
-					 */
-					f_lseek(fp, 1);
-					config_hdd[i].start = fp->sect;
-					f_rewind(fp);
-				}
+			}
+			if (contiguous)
+			{
+				// find the starting sector for the file
+				// see http://elm-chan.org/fsw/ff/doc/expand.html
+				config_hdd[i].start = fp->obj.fs->database
+						+ fp->obj.fs->csize * (fp->obj.sclust - 2);
+				debug((config_hdd[i].start) >> 24);
+				debug((config_hdd[i].start) >> 16);
+				debug((config_hdd[i].start) >> 8);
+				debug((config_hdd[i].start));
 			}
 		}
 	}
