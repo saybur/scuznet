@@ -184,6 +184,23 @@ static int config_handler(
 			}
 			return 1;
 		}
+		else if (strcmp(name, "mode") == 0)
+		{
+			if (strcmp(value, "fast") == 0)
+			{
+				config_hdd[hddsel].mode = 1;
+				return 1;
+			}
+			else if (strcmp(value, "normal") == 0)
+			{
+				config_hdd[hddsel].mode = 0;
+				return 1;
+			}
+			else
+			{
+				return 0;
+			}
+		}
 		else
 		{
 			return 0;
@@ -213,6 +230,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 		config_hdd[i].filename = NULL;
 		config_hdd[i].start = 0;
 		config_hdd[i].size = 0;
+		config_hdd[i].mode = 0;
 	}
 	
 	*target_masks = 0;

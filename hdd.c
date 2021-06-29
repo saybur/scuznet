@@ -274,9 +274,15 @@ static void hdd_cmd_read()
 		}
 		phy_phase(PHY_PHASE_DATA_IN);
 
-		uint8_t res;
+		uint8_t res = 255;
 		uint16_t act_len = 0;
-		if (config_hdd[id].filename != NULL) // filesystem virtual HDD
+		if (config_hdd[id].start > 0) // low-level access
+		{
+			uint32_t offset = config_hdd[id].start + op.lba;
+			res = disk_read_multi(0, phy_data_offer_block, offset, op.length);
+			if (! res) act_len = op.length;
+		}
+		else if (config_hdd[id].filename != NULL) // access via FAT
 		{
 			// move to correct sector
 			if (! hdd_seek(op.lba)) return;
@@ -284,21 +290,6 @@ static void hdd_cmd_read()
 			// read from card
 			res = f_mread(&(config_hdd[id].fp), phy_data_offer_block,
 					op.length, &act_len);
-		}
-		else if (config_hdd[id].size > 0) // native card access
-		{
-			uint32_t offset = config_hdd[id].size + op.lba;
-			res = disk_read_multi(0, phy_data_offer_block, offset, op.length);
-			if (! res) act_len = op.length;
-		}
-		else
-		{
-			// shouldn't be able to get here, this is probably a programming error
-			debug(DEBUG_HDD_ASSERT_FAILED);
-			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-			return;
 		}
 
 		if (res || act_len != op.length)
@@ -346,9 +337,15 @@ static void hdd_cmd_write()
 		}
 		phy_phase(PHY_PHASE_DATA_OUT);
 
-		uint8_t res;
+		uint8_t res = 255;
 		uint16_t act_len = 0;
-		if (config_hdd[id].filename != NULL) // filesystem virtual HDD
+		if (config_hdd[id].start > 0) // low-level access
+		{
+			uint32_t offset = config_hdd[id].start + op.lba;
+			res = disk_write_multi(0, phy_data_ask_block, offset, op.length);
+			if (! res) act_len = op.length;
+		}
+		else if (config_hdd[id].filename != NULL) // access via FAT
 		{
 			// move to correct sector
 			if (! hdd_seek(op.lba)) return;
@@ -356,21 +353,6 @@ static void hdd_cmd_write()
 			// write to card
 			res = f_mwrite(&(config_hdd[id].fp), phy_data_ask_block,
 					op.length, &act_len);
-		}
-		else if (config_hdd[id].size > 0) // native card access
-		{
-			uint32_t offset = config_hdd[id].size + op.lba;
-			res = disk_write_multi(0, phy_data_ask_block, offset, op.length);
-			if (! res) act_len = op.length;
-		}
-		else
-		{
-			// shouldn't be able to get here, this is probably a programming error
-			debug(DEBUG_HDD_ASSERT_FAILED);
-			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-			return;
 		}
 
 		if (res || act_len != op.length)
@@ -859,25 +841,26 @@ static void hdd_cmd_seek()
 		}
 	}
 
-	if (config_hdd[id].filename != NULL) // filesystem virtual HDD
-	{
-		// move to correct sector
-		if (! hdd_seek(op.lba)) return;
-	}
-	else if (config_hdd[id].size > 0) // native card access
+	if (config_hdd[id].start > 0) // low-level access
 	{
 		/*
 		 * Consider native access to have "free" seeks due to the very low card
 		 * seek time, so just do nothing here and pretend to have seeked.
 		 */
 	}
+	else if (config_hdd[id].filename != NULL) // access via FAT
+	{
+		// move to correct sector
+		if (! hdd_seek(op.lba)) return;
+	}
 	else
 	{
 		// shouldn't be able to get here, this is probably a programming error
-		debug(DEBUG_HDD_ASSERT_FAILED);
-		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
-		logic_status(LOGIC_STATUS_CHECK_CONDITION);
-		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
+		debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, 0xFF);
+			logic_set_sense(SENSE_KEY_HARDWARE_ERROR,
+					SENSE_DATA_NO_INFORMATION);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return;
 	}
 
@@ -895,11 +878,14 @@ uint8_t hdd_init(void)
 {
 	FRESULT res;
 	FILINFO fno;
+	FIL* fp;
 
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
 		{
+			fp = &(config_hdd[i].fp);
+
 			/*
 			 * Verify the file exists. If it does not exist, we may have been
 			 * asked to create it.
@@ -915,9 +901,8 @@ uint8_t hdd_init(void)
 					 * sequential-access performance. This will not work well
 					 * if the drive is fragmented.
 					 */
-					FIL* fp = &(config_hdd[i].fp);
 					config_hdd[i].size &= 0xFFF; // limit to 4GB
-					config_hdd[i].size <<= 20; // MB to bytes
+					config_hdd[i].size <<= 20; // MB to bytes (for now)
 					res = f_open(fp, config_hdd[i].filename,
 							FA_CREATE_NEW | FA_WRITE);
 					if (res)
@@ -961,18 +946,47 @@ uint8_t hdd_init(void)
 			/*
 			 * If we flowed through to here, OK to attempt opening the file.
 			 */
-			res = f_open(&(config_hdd[i].fp), config_hdd[i].filename, FA_READ | FA_WRITE);
+			res = f_open(fp, config_hdd[i].filename, FA_READ | FA_WRITE);
 			if (res)
 			{
 				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
 				return 0;
 			}
-			config_hdd[i].size = f_size(&(config_hdd[i].fp));
-			config_hdd[i].size >>= 9; // store in 512 byte sectors
+			config_hdd[i].size = (f_size(fp) >> 9); // store in 512 byte sectors
 			if (config_hdd[i].size == 0)
 			{
 				debug(DEBUG_HDD_FILE_SIZE_FAILED);
 				return 0;
+			}
+
+			/*
+			 * We can enable much faster performance if the file is contiguous,
+			 * and thus supporting low-level access that bypasses the FAT
+			 * layer.
+			 * 
+			 * TODO: this needs better reporting for users.
+			 */
+			if (config_hdd[i].mode != 0)
+			{
+				uint8_t c;
+				res = f_contiguous(fp, &c);
+				if (res)
+				{
+					debug_dual(DEBUG_HDD_SEEK_ERROR, res);
+					return 0;
+				}
+				if (c)
+				{
+					/*
+					 * The file is contiguous, so it should be safe to enable
+					 * low-level access. To figure out the start sector, we
+					 * force a seek one byte into the first sector, which
+					 * triggers a memory card read and fp->sect to be set.
+					 */
+					f_lseek(fp, 1);
+					config_hdd[i].start = fp->sect;
+					f_rewind(fp);
+				}
 			}
 		}
 	}

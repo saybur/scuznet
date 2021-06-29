@@ -73,6 +73,17 @@ that will enable both options if the microcontroller is *not* the 64A3U.
 This code relies on sector sizes being equal to 512 bytes. This is enforced via
 a check in the `disk.c` implementation.
 
+### Contiguous File Checking
+
+The following function has been added:
+
+```
+FRESULT f_contiguous (FIL* fp, BYTE* cont);
+```
+
+This is from the example code `test_contiguous_file()` available
+[here](http://elm-chan.org/fsw/ff/res/app5.c).
+
 FatFs Performance Notes
 -----------------------
 

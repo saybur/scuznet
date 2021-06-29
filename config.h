@@ -93,6 +93,7 @@ typedef struct HDDConfig_t {
 	uint32_t start;	            // if !=0, start sector for raw volumes
 	uint32_t size;              // size of HDD in sectors
 	FIL fp;
+	uint8_t mode;               // if nonzero, enable fast mode
 } HDDConfig;
 extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
