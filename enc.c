@@ -24,12 +24,6 @@
 #define ENC_ECON1_ARGUMENT 0x1F
 
 /*
- * Tracks which bank SPI instructions to and from the PHY are going to, for
- * the automatic bank tracking logic.
- */
-static uint8_t bank;
-
-/*
  * Writes the given byte to the given register. This is a low-level
  * operation that performs no checks before executing the command.
  */
@@ -83,7 +77,7 @@ static inline __attribute__((always_inline)) void enc_bank(uint8_t op_bank)
 	op_bank = op_bank & 0x03;
 
 	// and reset if needed
-	if (bank != op_bank)
+	if (ENC_BANK != op_bank)
 	{
 		uint8_t reg = enc_exchange_byte(
 				(ENC_ECON1 & ENC_REG_MASK) | ENC_OP_RCR,
@@ -92,7 +86,7 @@ static inline __attribute__((always_inline)) void enc_bank(uint8_t op_bank)
 		enc_exchange_byte(
 				(ENC_ECON1 & ENC_REG_MASK) | ENC_OP_WCR,
 				reg);
-		bank = op_bank;
+		ENC_BANK = op_bank;
 	}
 }
 
@@ -183,7 +177,7 @@ void enc_cmd_read(uint8_t reg, uint8_t* response)
 		*response = enc_exchange_byte(arg, 0);
 		if (arg == ENC_ECON1_ARGUMENT)
 		{
-			bank = ((*response) & 0x03);
+			ENC_BANK = ((*response) & 0x03);
 		}
 	}
 }
@@ -204,7 +198,7 @@ void enc_cmd_write(uint8_t reg, uint8_t value)
 	enc_exchange_byte(arg | ENC_OP_WCR, value);
 	if (arg == ENC_ECON1_ARGUMENT)
 	{
-		bank = (value & 0x03);
+		ENC_BANK = (value & 0x03);
 	}
 }
 
@@ -231,7 +225,7 @@ void enc_cmd_set(uint8_t reg, uint8_t mask)
 
 	if (arg == ENC_ECON1_ARGUMENT)
 	{
-		bank |= (mask & 0x03);
+		ENC_BANK |= (mask & 0x03);
 	}
 }
 
@@ -258,7 +252,7 @@ void enc_cmd_clear(uint8_t reg, uint8_t mask)
 
 	if (arg == ENC_ECON1_ARGUMENT)
 	{
-		bank &= ~(mask & 0x03);
+		ENC_BANK &= ~(mask & 0x03);
 	}
 }
 
@@ -319,7 +313,7 @@ uint8_t enc_phy_read(uint8_t phy_register, uint16_t* response)
 	*response += (r << 8);
 
 	// bank variable must end up in bank 2 where we left it
-	bank = 2;
+	ENC_BANK = 2;
 	return 0;
 }
 
@@ -362,7 +356,7 @@ uint8_t enc_phy_write(uint8_t phy_register, uint16_t value)
 			((uint8_t) (value >> 8)));
 
 	// bank variable must end up in bank 2 where we left it
-	bank = 2;
+	ENC_BANK = 2;
 	return 0;
 }
 
@@ -402,7 +396,7 @@ uint8_t enc_phy_scan(uint8_t phy_register)
 			ENC_MIISCAN_bm);
 
 	// bank variable must end up in bank 2 where we left it
-	bank = 2;
+	ENC_BANK = 2;
 	return 0;
 }
 

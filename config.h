@@ -44,9 +44,7 @@ typedef enum {
 
 /*
  * ============================================================================
- *  
  *   CONFIGURATION VALUES
- * 
  * ============================================================================
  * 
  * Declares the configuration information visible to other parts of the
@@ -99,15 +97,19 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 /*
  * ============================================================================
- *  
  *   HARDWARE CONFIGURATION
- * 
  * ============================================================================
  *
  * Different board revisions may have differnet pin assignments, which are
  * defined in separate headers added via an include into this file. A few
  * items get defined here if they are common to all -AU cores that could run
  * this firmware.
+ */
+
+/*
+ * ****************************************************************************
+ *   MEMORY CARD
+ * ****************************************************************************
  */
 
 /*
@@ -135,12 +137,21 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define MEM_DMA_WRITE           DMA.CH1
 #define MEM_GPIOR               GPIORF
 
+/*
+ * ****************************************************************************
+ *   ETHERNET PHY
+ * ****************************************************************************
+ */
+
+/*
+ * Tracks which bank SPI instructions to and from the PHY are using, for the
+ * automatic bank tracking logic.
+ */
+#define ENC_BANK                GPIOR4
 
 /*
  * ****************************************************************************
- * 
  *   SCSI PHY
- * 
  * ****************************************************************************
  */
 
