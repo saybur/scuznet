@@ -7,14 +7,10 @@ with vintage Macintosh computers.
 # Status
 
 The firmware is at an early alpha stage. There are many things that are known
-to not work correctly, including:
+to not work correctly, and there are likely a large number of other bugs that
+have yet to be identified and/or fixed.
 
-* Some SD cards have exhibited compatibility issues that have yet to be
-  fully identified and corrected.
-* MAC address changing at runtime from the driver is not implemented yet.
-
-There are likely a large number of other bugs that have yet to be identified
-and/or fixed.
+If you encounter problems, please open a new issue.
 
 # Compatibility
 
