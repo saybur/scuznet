@@ -21,6 +21,7 @@
 #include <string.h>
 #include "lib/inih/ini.h"
 #include "config.h"
+#include "lib/ff/diskio.h"
 #include "debug.h"
 
 ENETConfig config_enet = { 255, 0, LINK_NONE, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
@@ -213,6 +214,152 @@ static int config_handler(
 }
 
 /*
+ * Handles verification and final configuration of the hard drive volumes.
+ * 
+ * This will return true on success and false on failure.
+ */
+static uint8_t config_hdd_setup()
+{
+	FRESULT res;
+	FILINFO fno;
+	FIL* fp;
+
+	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
+	{
+		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
+		{
+			fp = &(config_hdd[i].fp);
+
+			/*
+			 * Verify the file exists. If it does not exist, we may have been
+			 * asked to create it.
+			 */
+			res = f_stat(config_hdd[i].filename, &fno);
+			if (res == FR_NO_FILE)
+			{
+				if (config_hdd[i].size > 0)
+				{
+					/*
+					 * File does not exist and we have been asked to create it.
+					 * This is done via f_expand() to maximize
+					 * sequential-access performance. This will not work well
+					 * if the drive is fragmented.
+					 */
+					config_hdd[i].size &= 0xFFF; // limit to 4GB
+					config_hdd[i].size <<= 20; // MB to bytes (for now)
+					res = f_open(fp, config_hdd[i].filename,
+							FA_CREATE_NEW | FA_WRITE);
+					if (res)
+					{
+						debug_dual(DEBUG_HDD_OPEN_FAILED, res);
+						return 0;
+					}
+					// allocate the space
+					res = f_expand(fp, config_hdd[i].size, 1);
+					if (res)
+					{
+						debug_dual(DEBUG_HDD_ALLOCATE_FAILED, res);
+						return 0;
+					}
+					// close the file, we'll be re-opening it later in
+					// the normal modes
+					f_close(fp);
+					if (res)
+					{
+						debug_dual(DEBUG_HDD_CLOSE_FAILED, res);
+						return 0;
+					}
+				}
+			}
+			else if (res == FR_OK)
+			{
+				// verify the file is the correct type to work with
+				if ((fno.fattrib & AM_DIR) || (fno.fattrib & AM_RDO))
+				{
+					debug_dual(DEBUG_HDD_INVALID_FILE, fno.fattrib);
+					return 0;
+				}
+			}
+			else
+			{
+				// other error, can't open this file
+				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
+				return 0;
+			}
+
+			/*
+			 * If we flowed through to here, OK to attempt opening the file.
+			 */
+			res = f_open(fp, config_hdd[i].filename, FA_READ | FA_WRITE);
+			if (res)
+			{
+				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
+				return 0;
+			}
+			config_hdd[i].size = (f_size(fp) >> 9); // store in 512 byte sectors
+			if (config_hdd[i].size == 0)
+			{
+				debug(DEBUG_HDD_FILE_SIZE_FAILED);
+				return 0;
+			}
+
+			/*
+			 * We can enable much faster performance if the file is contiguous,
+			 * and thus supporting low-level access that bypasses the FAT
+			 * layer.
+			 * 
+			 * TODO: this needs better reporting for users.
+			 */
+			if (config_hdd[i].mode != 0)
+			{
+				uint8_t c;
+				res = f_contiguous(fp, &c);
+				if (res)
+				{
+					debug_dual(DEBUG_HDD_SEEK_ERROR, res);
+					return 0;
+				}
+				if (c)
+				{
+					/*
+					 * The file is contiguous, so it should be safe to enable
+					 * low-level access. To figure out the start sector, we
+					 * force a seek one byte into the first sector, which
+					 * triggers a memory card read and fp->sect to be set.
+					 */
+					f_lseek(fp, 1);
+					config_hdd[i].start = fp->sect;
+					f_rewind(fp);
+				}
+			}
+		}
+	}
+
+	// verify native volumes do not exceed the end of the memory card
+	// TODO this is experimental and needs some testing
+	uint32_t card_size;
+	if (disk_ioctl(0, GET_SECTOR_COUNT, &card_size))
+	{
+		debug(DEBUG_HDD_IOCTRL_ERROR);
+		return 0;
+	}
+	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
+	{
+		if (config_hdd[i].id != 255 && config_hdd[i].start > 0)
+		{
+			uint32_t end = config_hdd[i].start + config_hdd[i].size;
+			if(end > card_size)
+			{
+				debug_dual(DEBUG_HDD_NATIVE_VOLUME_SIZE_ERROR, i);
+				return 0;
+			}
+		}
+	}
+
+	return 1;
+}
+
+/*
  * ============================================================================
  *  
  *   PUBLIC FUNCTIONS
@@ -256,7 +403,7 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 
 	/*
 	 * Calculate the PHY masks requested from the configuration file, and
-	 * finish configuring the hard drives based on the requested values.
+	 * disable hard drives with invalid values.
 	 */
 	uint8_t used_masks = 0x80; // reserve ID 7 for initiator
 	if (config_enet.id < 7 && config_enet.type != LINK_NONE)
@@ -295,6 +442,12 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 		}
 	}
 	*target_masks = used_masks & 0x7F;
+
+	// finish configuring the hard drives
+	if (! config_hdd_setup())
+	{
+		result = CONFIG_HDDERR;
+	}
 
 	return result;
 }

@@ -38,8 +38,9 @@
 
 typedef enum {
 	CONFIG_OK = 0,
-	CONFIG_NOFILE,
-	CONFIG_NOLOAD
+	CONFIG_NOFILE,      // unable to locate the 'scuznet.ini' file
+	CONFIG_NOLOAD,      // unable to load the 'scuznet.ini' file
+	CONFIG_HDDERR       // issue during the hard drive volume setup
 } CONFIG_RESULT;
 
 /*
