@@ -154,13 +154,12 @@ uint8_t enc_swap(uint8_t tx)
 	return ENC_USART.DATA;
 }
 
-void enc_cmd_read(uint8_t reg, uint8_t* response)
+ENCSTAT enc_cmd_read(uint8_t reg, uint8_t* response)
 {
 	uint8_t arg = reg & 0x1F;
 	if (arg == 0x1A)
 	{
-		// illegal operation
-		return;
+		return ENC_ILLEGAL_OP;
 	}
 	else if (arg < 0x1A)
 	{
@@ -180,15 +179,16 @@ void enc_cmd_read(uint8_t reg, uint8_t* response)
 			ENC_BANK = ((*response) & 0x03);
 		}
 	}
+
+	return ENC_OK;
 }
 
-void enc_cmd_write(uint8_t reg, uint8_t value)
+ENCSTAT enc_cmd_write(uint8_t reg, uint8_t value)
 {
 	uint8_t arg = reg & 0x1F;
 	if (arg == 0x1A)
 	{
-		// illegal operation
-		return;
+		return ENC_ILLEGAL_OP;
 	}
 	else if (arg < 0x1A)
 	{
@@ -200,21 +200,21 @@ void enc_cmd_write(uint8_t reg, uint8_t value)
 	{
 		ENC_BANK = (value & 0x03);
 	}
+
+	return ENC_OK;
 }
 
-void enc_cmd_set(uint8_t reg, uint8_t mask)
+ENCSTAT enc_cmd_set(uint8_t reg, uint8_t mask)
 {
 	if (reg & 0x80)
 	{
-		// illegal operation
-		return;
+		return ENC_ILLEGAL_OP;
 	}
 
 	uint8_t arg = reg & 0x1F;
 	if (arg == 0x1A)
 	{
-		// illegal operation
-		return;
+		return ENC_ILLEGAL_OP;
 	}
 	else if (arg < 0x1A)
 	{
@@ -227,21 +227,21 @@ void enc_cmd_set(uint8_t reg, uint8_t mask)
 	{
 		ENC_BANK |= (mask & 0x03);
 	}
+
+	return ENC_OK;
 }
 
-void enc_cmd_clear(uint8_t reg, uint8_t mask)
+ENCSTAT enc_cmd_clear(uint8_t reg, uint8_t mask)
 {
 	if (reg & 0x80)
 	{
-		// illegal operation
-		return;
+		return ENC_ILLEGAL_OP;
 	}
 
 	uint8_t arg = reg & 0x1F;
 	if (arg == 0x1A)
 	{
-		// illegal operation
-		return;
+		return ENC_ILLEGAL_OP;
 	}
 	else if (arg < 0x1A)
 	{
@@ -254,6 +254,8 @@ void enc_cmd_clear(uint8_t reg, uint8_t mask)
 	{
 		ENC_BANK &= ~(mask & 0x03);
 	}
+
+	return ENC_OK;
 }
 
 /*
@@ -265,19 +267,21 @@ void enc_cmd_clear(uint8_t reg, uint8_t mask)
  * needed more than once, it is probably a better idea to use the
  * scanning system.
  */
-uint8_t enc_phy_read(uint8_t phy_register, uint16_t* response)
+ENCSTAT enc_phy_read(uint8_t phy_register, uint16_t* response)
 {
 	enc_bank(3);
 	uint8_t r = enc_exchange_special(
 			(ENC_MISTAT & ENC_REG_MASK) | ENC_OP_RCR);
 	if (r & ENC_BUSY_bm)
 	{
-		return ENC_ERR_PHYBSY;
+		return ENC_PHYBSY;
 	}
 	if (r & ENC_SCAN_bm)
 	{
-		return ENC_ERR_PHYSCANNING;
+		return ENC_PHYSCAN;
 	}
+
+	// TODO verify PHY address is valid??
 
 	// fast switch from bank 3 to bank 2
 	enc_exchange_byte(
@@ -314,7 +318,7 @@ uint8_t enc_phy_read(uint8_t phy_register, uint16_t* response)
 
 	// bank variable must end up in bank 2 where we left it
 	ENC_BANK = 2;
-	return 0;
+	return ENC_OK;
 }
 
 /*
@@ -324,19 +328,21 @@ uint8_t enc_phy_read(uint8_t phy_register, uint16_t* response)
  * wait for the 10.24us - it is the responsibility of the caller to
  * ensure enough time passes before subsequent use of the MIIM.
  */
-uint8_t enc_phy_write(uint8_t phy_register, uint16_t value)
+ENCSTAT enc_phy_write(uint8_t phy_register, uint16_t value)
 {
 	enc_bank(3);
 	uint8_t r = enc_exchange_special(
 			(ENC_MISTAT & ENC_REG_MASK) | ENC_OP_RCR);
 	if (r & ENC_BUSY_bm)
 	{
-		return ENC_ERR_PHYBSY;
+		return ENC_PHYBSY;
 	}
 	if (r & ENC_SCAN_bm)
 	{
-		return ENC_ERR_PHYSCANNING;
+		return ENC_PHYSCAN;
 	}
+
+	// TODO verify PHY address is valid??
 
 	// fast switch from bank 3 to bank 2
 	enc_exchange_byte(
@@ -357,7 +363,7 @@ uint8_t enc_phy_write(uint8_t phy_register, uint16_t value)
 
 	// bank variable must end up in bank 2 where we left it
 	ENC_BANK = 2;
-	return 0;
+	return ENC_OK;
 }
 
 /*
@@ -368,19 +374,21 @@ uint8_t enc_phy_write(uint8_t phy_register, uint16_t value)
  * check if MISTAT.NVALID is set, then read MIRDL and/or MIRDH. To stop
  * scanning, clear MICMD.MIISCAN manually.
  */
-uint8_t enc_phy_scan(uint8_t phy_register)
+ENCSTAT enc_phy_scan(uint8_t phy_register)
 {
 	enc_bank(ENC_MISTAT); // always switches us to bank 3
 	uint8_t r = enc_exchange_special(
 			(ENC_MISTAT & ENC_REG_MASK) | ENC_OP_RCR);
 	if (r & ENC_BUSY_bm)
 	{
-		return ENC_ERR_PHYBSY;
+		return ENC_PHYBSY;
 	}
 	if (r & ENC_SCAN_bm)
 	{
-		return ENC_ERR_PHYSCANNING;
+		return ENC_PHYSCAN;
 	}
+
+	// TODO verify PHY address is valid??
 
 	// fast switch from bank 3 to bank 2
 	enc_exchange_byte(
@@ -397,22 +405,24 @@ uint8_t enc_phy_scan(uint8_t phy_register)
 
 	// bank variable must end up in bank 2 where we left it
 	ENC_BANK = 2;
-	return 0;
+	return ENC_OK;
 }
 
-void enc_read_start(void)
+ENCSTAT enc_read_start(void)
 {
 	ENC_PORT.OUTCLR = ENC_PIN_CS;
 	enc_swap(ENC_OP_RBM);
+	return ENC_OK;
 }
 
-void enc_write_start(void)
+ENCSTAT enc_write_start(void)
 {
 	ENC_PORT.OUTCLR = ENC_PIN_CS;
 	enc_swap(ENC_OP_WBM);
+	return ENC_OK;
 }
 
-void enc_data_end(void)
+ENCSTAT enc_data_end(void)
 {
 	// wait in case there are remaining values in progress
 	while (! (ENC_USART.STATUS & USART_TXCIF_bm));
@@ -421,4 +431,5 @@ void enc_data_end(void)
 		ENC_USART.DATA;
 	}
 	ENC_PORT.OUTSET = ENC_PIN_CS;
+	return ENC_OK;
 }

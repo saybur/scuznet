@@ -319,26 +319,20 @@
 #define ENC_STRCH_bm _BV(1)
 
 /*
- * Response codes given in some functions:
- * 
- * * ENC_ERR_PHYBSY if MISTAT.BUSY set when a PHY function is called.
- * * ENC_ERR_PHYSCANNING if MISTAT.SCAN set when a PHY function is
- *   called.
+ * The response codes given by most functions.
  */
-#define ENC_ERR_PHYBSY        4
-#define ENC_ERR_PHYSCANNING   5
+typedef enum {
+	ENC_OK = 0,
+	ENC_ILLEGAL_OP,     // given command opcode is illegal
+	ENC_PHYBSY,         // if MISTAT.BUSY set when a PHY function is called
+	ENC_PHYSCAN         // if MISTAT.SCAN set when a PHY function is called
+} ENCSTAT;
 
 /*
  * Initalization calls, for use during MCU startup, before interrupts are
  * enabled. For details, see the function definitions.
  */
 void enc_init(void);
-
-/*
- * Sends the given byte to the device, returning the result. This should be
- * used when in a data mode only.
- */
-uint8_t enc_swap(uint8_t);
 
 /*
  * Register operations, as defined in 4.2. Most accept a data value to send to
@@ -349,10 +343,10 @@ uint8_t enc_swap(uint8_t);
  * underlying command supports, more or less. Note that BFS and BFC work only
  * on ETH registers and will fail silently if given non-ETH registers.
  */
-void enc_cmd_read(uint8_t, uint8_t*);
-void enc_cmd_write(uint8_t, uint8_t);
-void enc_cmd_set(uint8_t, uint8_t);
-void enc_cmd_clear(uint8_t, uint8_t);
+ENCSTAT enc_cmd_read(uint8_t, uint8_t*);
+ENCSTAT enc_cmd_write(uint8_t, uint8_t);
+ENCSTAT enc_cmd_set(uint8_t, uint8_t);
+ENCSTAT enc_cmd_clear(uint8_t, uint8_t);
 
 /*
  * PHY operations, documented in 3.3. They work similarly to the above
@@ -363,9 +357,9 @@ void enc_cmd_clear(uint8_t, uint8_t);
  * The scan function enables scanning the given PHY register. See the
  * definition in the .c file for details.
  */
-uint8_t enc_phy_read(uint8_t, uint16_t*);
-uint8_t enc_phy_write(uint8_t, uint16_t);
-uint8_t enc_phy_scan(uint8_t);
+ENCSTAT enc_phy_read(uint8_t, uint16_t*);
+ENCSTAT enc_phy_write(uint8_t, uint16_t);
+ENCSTAT enc_phy_scan(uint8_t);
 
 /*
  * Operations that start a read buffer or write buffer operation.
@@ -383,8 +377,14 @@ uint8_t enc_phy_scan(uint8_t);
  * Note these calls assume ECON2.AUTOINC is set. If it is not, these will not
  * work correctly.
  */
-void enc_read_start(void);
-void enc_write_start(void);
-void enc_data_end(void);
+ENCSTAT enc_read_start(void);
+ENCSTAT enc_write_start(void);
+ENCSTAT enc_data_end(void);
+
+/*
+ * Sends the given byte to the device, returning the result. This should be
+ * used when in a data mode only.
+ */
+uint8_t enc_swap(uint8_t);
 
 #endif /* ENC_H */
