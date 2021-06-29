@@ -397,6 +397,7 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 	 * Per 7.2.1, we should disable packet reception, reset ERXFCON, then
 	 * re-enable packet reception.
 	 */
+	while (enc_lock());
 	enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 	if (data[7] & 0x80)
 	{
@@ -415,6 +416,7 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 		debug(DEBUG_LINK_FILTER_UNICAST);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
+	enc_unlock();
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -457,6 +459,7 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 		}
 	}
 
+	while (enc_lock());
 	enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 	if (allow_atalk)
 	{
@@ -475,6 +478,7 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 		debug(DEBUG_LINK_FILTER_UNICAST);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
+	enc_unlock();
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -485,7 +489,9 @@ static void link_cmd_nuvo_send(uint8_t* cmd)
 	debug(DEBUG_LINK_TX_REQUESTED);
 
 	uint16_t length = ((cmd[3] & 7) << 8) + cmd[4];
+	while (enc_lock());
 	link_send_packet(length);
+	enc_unlock();
 
 	// indicate OK on TX
 	logic_status(LOGIC_STATUS_GOOD);
@@ -505,7 +511,9 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 		for (uint8_t i = 0; i < 4; i++) phy_data_ask();
 	}
 
+	while (enc_lock());
 	link_send_packet(length);
+	enc_unlock();
 
 	if (cmd[5] == 0x80)
 	{
@@ -648,6 +656,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	 * to occur before the header is read and the ENC switches to read_start
 	 * mode.
 	 */
+	while (enc_lock());
 	uint8_t total_packets = 0;
 	enc_cmd_read(ENC_EPKTCNT, &total_packets);
 	uint8_t packet_counter = total_packets;
@@ -841,6 +850,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 			}
 		}
 	}
+	enc_unlock();
 
 	// Close out transaction
 	if (phy_is_atn_asserted())
@@ -937,6 +947,7 @@ uint8_t link_main(void)
 		uint16_t txreq = 0;
 		while (phy_is_active() && ((ENC_PORT_EXT.IN & ENC_PIN_INT) || txreq))
 		{
+			while (enc_lock());
 			if (txreq)
 			{
 				// initiator wants to send a packet
@@ -962,6 +973,7 @@ uint8_t link_main(void)
 				//_delay_us(100);
 				txreq = link_nuvo_message_out_post_rx();
 			}
+			enc_unlock();
 		}
 		asked_for_reselection = 0;
 		if (phy_is_active())

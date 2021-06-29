@@ -151,6 +151,12 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define ENC_BANK                GPIOR4
 
 /*
+ * Maintains state for the Ethernet subsystem. See enc.c for details on what
+ * the bits of this register indicate.
+ */
+#define ENC_STATE               GPIO5
+
+/*
  * ****************************************************************************
  *   SCSI PHY
  * ****************************************************************************

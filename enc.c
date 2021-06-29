@@ -17,9 +17,13 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <util/atomic.h>
 #include <util/delay.h>
 #include "config.h"
 #include "enc.h"
+
+// manages our primitive concurrency subsystem
+#define ENC_SEMAPHORE_bm 0x01
 
 #define ENC_ECON1_ARGUMENT 0x1F
 
@@ -144,6 +148,29 @@ void enc_init(void)
 	ENC_USART.CTRLC = USART_CMODE_MSPI_gc;
 	// start unit
 	ENC_USART.CTRLB = USART_RXEN_bm | USART_TXEN_bm;
+}
+
+ENCSTAT enc_lock()
+{
+	ENCSTAT i;
+	ATOMIC_BLOCK(ATOMIC_FORCEON)
+	{
+		if (ENC_STATE & ENC_SEMAPHORE_bm)
+		{
+			i = ENC_BUSY;
+		}
+		else
+		{
+			ENC_STATE |= ENC_SEMAPHORE_bm;
+			i = ENC_OK;
+		}
+	}
+	return i;
+}
+
+void enc_unlock()
+{
+	ENC_STATE &= ~ENC_SEMAPHORE_bm;
 }
 
 uint8_t enc_swap(uint8_t tx)
