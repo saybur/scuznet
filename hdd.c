@@ -294,7 +294,7 @@ static void hdd_cmd_read()
 		else
 		{
 			// shouldn't be able to get here, this is probably a programming error
-			debug(DEBUG_HDD_INVALID_FILE);
+			debug(DEBUG_HDD_ASSERT_FAILED);
 			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -366,7 +366,7 @@ static void hdd_cmd_write()
 		else
 		{
 			// shouldn't be able to get here, this is probably a programming error
-			debug(DEBUG_HDD_INVALID_FILE);
+			debug(DEBUG_HDD_ASSERT_FAILED);
 			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -874,7 +874,7 @@ static void hdd_cmd_seek()
 	else
 	{
 		// shouldn't be able to get here, this is probably a programming error
-		debug(DEBUG_HDD_INVALID_FILE);
+		debug(DEBUG_HDD_ASSERT_FAILED);
 		logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
 		logic_status(LOGIC_STATUS_CHECK_CONDITION);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -894,24 +894,85 @@ static void hdd_cmd_seek()
 uint8_t hdd_init(void)
 {
 	FRESULT res;
+	FILINFO fno;
 
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
 		{
+			/*
+			 * Verify the file exists. If it does not exist, we may have been
+			 * asked to create it.
+			 */
+			res = f_stat(config_hdd[i].filename, &fno);
+			if (res == FR_NO_FILE)
+			{
+				if (config_hdd[i].size > 0)
+				{
+					/*
+					 * File does not exist and we have been asked to create it.
+					 * This is done via f_expand() to maximize
+					 * sequential-access performance. This will not work well
+					 * if the drive is fragmented.
+					 */
+					FIL* fp = &(config_hdd[i].fp);
+					config_hdd[i].size &= 0xFFF; // limit to 4GB
+					config_hdd[i].size <<= 20; // MB to bytes
+					res = f_open(fp, config_hdd[i].filename,
+							FA_CREATE_NEW | FA_WRITE);
+					if (res)
+					{
+						debug_dual(DEBUG_HDD_OPEN_FAILED, res);
+						return 0;
+					}
+					// allocate the space
+					res = f_expand(fp, config_hdd[i].size, 1);
+					if (res)
+					{
+						debug_dual(DEBUG_HDD_ALLOCATE_FAILED, res);
+						return 0;
+					}
+					// close the file, we'll be re-opening it later in
+					// the normal modes
+					f_close(fp);
+					if (res)
+					{
+						debug_dual(DEBUG_HDD_CLOSE_FAILED, res);
+						return 0;
+					}
+				}
+			}
+			else if (res == FR_OK)
+			{
+				// verify the file is the correct type to work with
+				if ((fno.fattrib & AM_DIR) || (fno.fattrib & AM_RDO))
+				{
+					debug_dual(DEBUG_HDD_INVALID_FILE, fno.fattrib);
+					return 0;
+				}
+			}
+			else
+			{
+				// other error, can't open this file
+				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
+				return 0;
+			}
+
+			/*
+			 * If we flowed through to here, OK to attempt opening the file.
+			 */
 			res = f_open(&(config_hdd[i].fp), config_hdd[i].filename, FA_READ | FA_WRITE);
 			if (res)
 			{
-				debug(DEBUG_HDD_MOUNT_FAILED);
+				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
 				return 0;
 			}
-			
-			uint32_t size;
-			size = f_size(&(config_hdd[i].fp));
-			size >>= 9; // in 512 byte sectors
-			if (size > 0)
+			config_hdd[i].size = f_size(&(config_hdd[i].fp));
+			config_hdd[i].size >>= 9; // store in 512 byte sectors
+			if (config_hdd[i].size == 0)
 			{
-				config_hdd[i].size = size;
+				debug(DEBUG_HDD_FILE_SIZE_FAILED);
+				return 0;
 			}
 		}
 	}

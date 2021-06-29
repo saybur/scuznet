@@ -175,6 +175,15 @@ static int config_handler(
 			free(copy);
 			return rval;
 		}
+		else if (strcmp(name, "size") == 0)
+		{
+			// disallow if a direct-sector volume is present
+			if (config_hdd[hddsel].start == 0)
+			{
+				config_hdd[hddsel].size = ((uint16_t) atoi(value));
+			}
+			return 1;
+		}
 		else
 		{
 			return 0;
