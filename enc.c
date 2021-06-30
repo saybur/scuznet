@@ -150,29 +150,6 @@ void enc_init(void)
 	ENC_USART.CTRLB = USART_RXEN_bm | USART_TXEN_bm;
 }
 
-ENCSTAT enc_lock()
-{
-	ENCSTAT i;
-	ATOMIC_BLOCK(ATOMIC_FORCEON)
-	{
-		if (ENC_STATE & ENC_SEMAPHORE_bm)
-		{
-			i = ENC_BUSY;
-		}
-		else
-		{
-			ENC_STATE |= ENC_SEMAPHORE_bm;
-			i = ENC_OK;
-		}
-	}
-	return i;
-}
-
-void enc_unlock()
-{
-	ENC_STATE &= ~ENC_SEMAPHORE_bm;
-}
-
 uint8_t enc_swap(uint8_t tx)
 {
 	while (! (ENC_USART.STATUS & USART_DREIF_bm));

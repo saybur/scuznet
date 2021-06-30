@@ -29,21 +29,17 @@
  * interfacing (slightly) more like handling an internal MCU peripheral rather
  * than an external device.
  * 
+ * Important note: this implementation is not safe to use from the interrupt
+ * context without some kind of external protection. It is able to handle being
+ * interrupted by simply idling the USART with the /CS pin asserted, which
+ * modern silicon revisions of the ENC28J60 should be able to handle.
+ * 
  * This code tracks which bank the device is in, so clients do not need to
  * manually switch banks. This is accomplished by tracking the state of the
  * ECON1 register in local memory whenever it gets read or written.
  * Consequently, it is important that after any PHY reset not associated with
  * a MCU reset, ECON1 be read or written *first*, before any other activity
  * occurs, to update this tracker.
- */
-
-/*
- * Important note on concurrency:
- * 
- * This implementation may be used from both the regular and interrupt context.
- * To prevent issues, prior to executing _any_ commands, it is crucial that
- * enc_lock() be called to reserve the subsystem. If that call does not return
- * ENC_OK, then no other calls should be made until ENC_LOCK clears.
  */
 
 /*
@@ -327,7 +323,6 @@
  */
 typedef enum {
 	ENC_OK = 0,
-	ENC_BUSY,           // subsystem in use by another context; see enc_lock()
 	ENC_ILLEGAL_OP,     // given command opcode is illegal
 	ENC_PHYBSY,         // if MISTAT.BUSY set when a PHY function is called
 	ENC_PHYSCAN         // if MISTAT.SCAN set when a PHY function is called
@@ -338,19 +333,6 @@ typedef enum {
  * enabled. For details, see the function definitions.
  */
 void enc_init(void);
-
-/*
- * These calls manage a semaphore that indicates whether or not this subsystem
- * is available for use. Callers must guard each discrete transaction this way
- * to prevent invocation from another context.
- * 
- * Upon enc_lock() returning ENC_OK, the caller may use the subsystem freely.
- * When a transaction ends, enc_unlock() releases the semaphore. If the
- * subsystem is in use by another context, calls to enc_lock() will return
- * ENC_BUSY, and no calls may be made to any other function.
- */
-ENCSTAT enc_lock(void);
-void enc_unlock(void);
 
 /*
  * Register operations, as defined in 4.2. Most accept a data value to send to

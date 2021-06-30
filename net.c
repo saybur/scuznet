@@ -227,8 +227,6 @@ NETSTAT net_get(volatile NetHeader* header)
 
 NETSTAT net_set_filter(NETFILTER ftype, uint8_t (*mc_filter)(NetHeader*))
 {
-	if (enc_lock()) return NET_LOCKED;
-
 	// update the multicast filter
 	mcast_filter = mc_filter;
 
@@ -254,7 +252,7 @@ NETSTAT net_set_filter(NETFILTER ftype, uint8_t (*mc_filter)(NetHeader*))
 				| ENC_CRCEN_bm);
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
-	enc_unlock();
+
 	return NET_OK;
 }
 
@@ -262,12 +260,10 @@ NETSTAT net_skip(void)
 {
 	if (net_size() > 0)
 	{
-		if (enc_lock()) return NET_LOCKED;
 		uint16_t erxrdpt = net_headers[NET_PACKET_PTR].next_packet - 1;
 		enc_cmd_write(ENC_ERXRDPTL, (uint8_t) erxrdpt);
 		enc_cmd_write(ENC_ERXRDPTH, (uint8_t) (erxrdpt >> 8));
 		advance_packet();
-		enc_unlock();
 	}
 	return NET_OK;
 }
@@ -275,8 +271,6 @@ NETSTAT net_skip(void)
 NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t))
 {
 	NETSTAT res;
-
-	if (enc_lock()) return NET_LOCKED;
 
 	// get the current packet data
 	NetHeader* header = NULL;
@@ -299,14 +293,11 @@ NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t))
 	advance_packet();
 
 	// then we're done
-	enc_unlock();
 	return NET_OK;
 }
 
 NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 {
-	if (enc_lock()) return NET_LOCKED;
-
 	// move TX pointer
 	enc_cmd_write(ENC_EWRPTL, 0x00);
 	enc_cmd_write(ENC_EWRPTH, ENC_XMIT_STARTH);
@@ -319,7 +310,6 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 	enc_data_end();
 	// instruct network chip to send the packet
 	net_transmit(length + 1);
-	enc_unlock();
 
 	return NET_OK;
 }
