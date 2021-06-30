@@ -149,7 +149,7 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 /*
  * ****************************************************************************
- *   ETHERNET PHY
+ *   ETHERNET PHY / NETWORKING
  * ****************************************************************************
  */
 
@@ -164,6 +164,19 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
  * the bits of this register indicate.
  */
 #define ENC_STATE               GPIO5
+
+/*
+ * DMA channels reserved for the networking subsystem.
+ */
+#define NET_DMA_READ            DMA.CH2
+#define NET_DMA_WRITE           DMA.CH3
+
+/*
+ * Used to monitor the current number of packet headers stored in memory. See
+ * net.h for details.
+ */
+#define NET_PACKET_PTR          GPIO6
+#define NET_PACKET_SIZE         GPIO7
 
 /*
  * ****************************************************************************

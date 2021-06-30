@@ -69,6 +69,9 @@
  *   ETHERNET CONTROLLER
  * 
  * ****************************************************************************
+ * 
+ * The /INT pin must be assigned to INT1 on the relevant port.
+ * 
  */
 #define ENC_USART               USARTF0
 #define ENC_USART_BAUDCTRL      0
@@ -83,6 +86,7 @@
 #define ENC_PIN_RST             PIN4_bm
 #define ENC_PIN_INT             PIN5_bm
 #define ENC_INT_PINCTRL         PORTF.PIN5CTRL
+#define ENC_INT_ISR             PORTF_INT1_vect
 
 #define ENC_DMA_TX_TRIG         DMA_CH_TRIGSRC_USARTF0_DRE_gc
 #define ENC_DMA_RX_TRIG         DMA_CH_TRIGSRC_USARTF0_RXC_gc

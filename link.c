@@ -18,10 +18,10 @@
  * along with scuznet.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <util/delay.h>
 #include "config.h"
 #include "debug.h"
-#include "enc.h"
 #include "link.h"
 #include "logic.h"
 #include "net.h"
@@ -99,17 +99,14 @@ static const __flash uint8_t inquiry_data_d[255] = {
 	0x00,0x00,0x00 //3 bytes
 };
 
-// the selector for the TX buffer space
-static uint8_t txbuf;
-
 // the last-seen identify value
 static uint8_t last_identify;
 
 // buffers and headers used during the reading operation
-static uint8_t read_buffer[19];
-static NetHeader net_header;
+static uint8_t read_buffer[6];
 
-// the counter used during packet read operations
+// the incremental packet counter used during packet read operations by
+// the Nuvo protocol
 static uint8_t rx_packet_id = 0;
 
 // the value we use as a flag to see if we need to ask for a reselection
@@ -128,45 +125,7 @@ static uint8_t allow_atalk;
  * ============================================================================
  */
 
-/*
- * Starts a ENC28J60 read operation, reads the packet into the internal buffer,
- * and processes it into the net_header struct. The read operation is left open
- * after the end of this call.
- */
-static void link_read_packet_header(void)
-{
-	enc_read_start();
-	for (uint8_t i = 0; i < 6; i++)
-	{
-		read_buffer[i] = enc_swap(0xFF);
-	}
-	net_process_header(read_buffer, &net_header);
-}
 
-/*
- * Ends a ENC28J60 read operation, skipping to the next packet. This is the
- * complement to the above call, to be used after it when the packet is
- * determined to be unimportant.
- */
-static void link_skip_packet(void)
-{
-	link_read_packet_header();
-	enc_data_end();
-
-	// skip it without reading
-	net_move_rxpt(net_header.next_packet, 1);
-	enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
-}
-
-/*
- * Switches to DATA OUT, receives a packet from the initiator, and writes it
- * to the Ethernet chip directly, handling switching between the two transmit
- * buffers inside the ENC28J60.
- * 
- * The given length is the packet that should be written. Both link devices
- * kindly provide exactly the right information for this chip, so streaming
- * directly into the ENC28J60 is fine.
- */
 static void link_send_packet(uint16_t length)
 {
 	if (length > MAXIMUM_TRANSFER_LENGTH)
@@ -174,21 +133,62 @@ static void link_send_packet(uint16_t length)
 		length = MAXIMUM_TRANSFER_LENGTH;
 	}
 
-	// get devices in the right mode for a data transfer
 	phy_phase(PHY_PHASE_DATA_OUT);
-	net_move_txpt(txbuf);
-	enc_write_start();
+	net_stream_write(phy_data_ask_stream, length);
+}
 
-	// write the status byte
-	enc_swap(0x00);
+/*
+ * Function that handles the AppleTalk check for net_set_filter() based on
+ * the internal state of the filtering check.
+ */
+static uint8_t link_atalk_check(NetHeader* header)
+{
+	uint8_t* dest = header->dest;
 
-	// transfer raw data, which happens to match the needed format (yay)
-	phy_data_ask_stream(&ENC_USART, length);
+	// unicast?
+	if (dest[0] == mac_dyn[0]
+			&& dest[1] == mac_dyn[1]
+			&& dest[2] == mac_dyn[2]
+			&& dest[3] == mac_dyn[3]
+			&& dest[4] == mac_dyn[4]
+			&& dest[5] == mac_dyn[5])
+	{
+		return 1;
+	}
 
-	// instruct network chip to send the packet
-	enc_data_end();
-	net_transmit(txbuf, length + 1);
-	txbuf = txbuf ? 0 : 1;
+	// broadcast?
+	if (dest[0] == 0xFF
+			&& dest[1] == 0xFF
+			&& dest[2] == 0xFF
+			&& dest[3] == 0xFF
+			&& dest[4] == 0xFF
+			&& dest[5] == 0xFF)
+	{
+		return 1;
+	}
+
+	// AppleTalk multicast?
+	if (allow_atalk)
+	{
+		if (dest[0] == 0x09
+			&& dest[1] == 0x00
+			&& dest[2] == 0x07)
+		{
+			if (dest[3] == 0x00
+				&& dest[4] == 0x00)
+			{
+				return 1;
+			}
+			else if (dest[3] == 0xFF
+				&& dest[4] == 0xFF
+				&& dest[5] == 0xFF)
+			{
+				return 1;
+			}
+		}
+	}
+
+	return 0;
 }
 
 /*
@@ -393,30 +393,17 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 	 * now, we use that MSB bit as a flag to turn the ENC28J60 multicast filter
 	 * on or off. At some point this should be revisited to cut down on traffic
 	 * accepted by the device.
-	 * 
-	 * Per 7.2.1, we should disable packet reception, reset ERXFCON, then
-	 * re-enable packet reception.
 	 */
-	while (enc_lock());
-	enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 	if (data[7] & 0x80)
 	{
-		// accept unicast and multicast (inclusive of broadcast)
-		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-			| ENC_CRCEN_bm
-			| ENC_MCEN_bm);
+		net_set_filter(NET_FILTER_MULTICAST, NULL);
 		debug(DEBUG_LINK_FILTER_MULTICAST);
 	}
 	else
 	{
-		// just accept unicast and broadcast
-		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-			| ENC_BCEN_bm
-			| ENC_CRCEN_bm);
+		net_set_filter(NET_FILTER_BROADCAST, NULL);
 		debug(DEBUG_LINK_FILTER_UNICAST);
 	}
-	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
-	enc_unlock();
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -459,26 +446,14 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 		}
 	}
 
-	while (enc_lock());
-	enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
 	if (allow_atalk)
 	{
-		// accept unicast and multicast (inclusive of broadcast)
-		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-			| ENC_CRCEN_bm
-			| ENC_MCEN_bm);
-		debug(DEBUG_LINK_FILTER_MULTICAST);
+		net_set_filter(NET_FILTER_MULTICAST, link_atalk_check);
 	}
 	else
 	{
-		// just accept unicast and broadcast
-		enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-			| ENC_BCEN_bm
-			| ENC_CRCEN_bm);
-		debug(DEBUG_LINK_FILTER_UNICAST);
+		net_set_filter(NET_FILTER_BROADCAST, NULL);
 	}
-	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
-	enc_unlock();
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -489,9 +464,7 @@ static void link_cmd_nuvo_send(uint8_t* cmd)
 	debug(DEBUG_LINK_TX_REQUESTED);
 
 	uint16_t length = ((cmd[3] & 7) << 8) + cmd[4];
-	while (enc_lock());
 	link_send_packet(length);
-	enc_unlock();
 
 	// indicate OK on TX
 	logic_status(LOGIC_STATUS_GOOD);
@@ -509,11 +482,10 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 		// for the XX=80, all I have ever seen is where LLLL = PPPP
 		phy_phase(PHY_PHASE_DATA_OUT);
 		for (uint8_t i = 0; i < 4; i++) phy_data_ask();
+		length -= 8;
 	}
 
-	while (enc_lock());
 	link_send_packet(length);
-	enc_unlock();
 
 	if (cmd[5] == 0x80)
 	{
@@ -528,14 +500,18 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 
 static void link_nuvo_read_packet(void)
 {
-	link_read_packet_header();
+	NetHeader* net_header = NULL;
+	if (net_get(net_header))
+	{
+		// TODO ERROR HANDLE
+	}
 
 	/*
 	 * Construct the flag byte and packet counter in the buffer at the correct
 	 * position for sending over the PHY. Length is already in position 2 and 3
 	 * from the ENC read.
 	 */
-	if (net_header.stath & 3)
+	if ((net_header->stath) & 3)
 	{
 		// broadcast/multicast set
 		read_buffer[0] = 0x21;
@@ -545,35 +521,12 @@ static void link_nuvo_read_packet(void)
 		read_buffer[0] = 0x01;
 	}
 	read_buffer[1] = rx_packet_id++;
+	read_buffer[2] = (uint8_t) (net_header->length);
+	read_buffer[3] = (uint8_t) ((net_header->length) >> 8);
 
-	/*
-	 * Read in another 14 bytes. The driver seems to require 19 bytes quickly,
-	 * then waits for 67us, then gets more data. We'll provide the 19 bytes via
-	 * SRAM, then pass off to the USART handler for the rest of the data.
-	 */
-	for (uint8_t i = 4; i < 19; i++)
-	{
-		read_buffer[i] = enc_swap(0xFF);
-	}
-
-	// send initial data
-	uint16_t usart_len = net_header.length - 15;
 	phy_phase(PHY_PHASE_DATA_IN);
-	_delay_us(6);
-	phy_data_offer_bulk(read_buffer, 19);
-
-	/*
-	 * Per above note, this is when the driver pauses. Change to direct 
-	 * USART / PHY control. Byte is already waiting in the USART per PHY 
-	 * contract. We call the version that checks /ATN, and end early if we
-	 * see it, discarding the rest of the packet.
-	 */
-	phy_data_offer_stream_atn(&ENC_USART, usart_len);
-	enc_data_end();
-
-	// decrement the packet counter and make sure the read pointer is set right
-	net_move_rxpt(net_header.next_packet, 1);
-	enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
+	phy_data_offer_bulk(read_buffer, 4);
+	net_stream_read(phy_data_offer_stream_atn);
 }
 
 static uint16_t link_nuvo_message_out_post_rx(void)
@@ -651,17 +604,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		return;
 	}
 
-	/*
-	 * Read number of read packets from packet counter. Appears this needs
-	 * to occur before the header is read and the ENC switches to read_start
-	 * mode.
-	 */
-	while (enc_lock());
-	uint8_t total_packets = 0;
-	enc_cmd_read(ENC_EPKTCNT, &total_packets);
-	uint8_t packet_counter = total_packets;
-
-	if (total_packets == 0)
+	if (net_size() == 0)
 	{
 		// send "No Packets" message
 		debug(DEBUG_LINK_RX_NO_DATA);
@@ -674,183 +617,76 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	else
 	{
 		debug(DEBUG_LINK_RX_STARTING);
-		uint8_t dest[6];
-		uint8_t found_packet = 0;
-		do
+
+		NetHeader* net_header = NULL;
+		if (net_get(net_header))
 		{
-			// get packet header and destination MAC
-			link_read_packet_header();
-			for (uint8_t i = 0; i < 6; i++)
-			{
-				dest[i] = enc_swap(0xFF);
-			}
-
-			// unicast?
-			if (dest[0] == mac_dyn[0]
-					&& dest[1] == mac_dyn[1]
-					&& dest[2] == mac_dyn[2]
-					&& dest[3] == mac_dyn[3]
-					&& dest[4] == mac_dyn[4]
-					&& dest[5] == mac_dyn[5])
-			{
-				found_packet = 1;
-				break;
-			}
-
-			// broadcast?
-			if (dest[0] == 0xFF
-					&& dest[1] == 0xFF
-					&& dest[2] == 0xFF
-					&& dest[3] == 0xFF
-					&& dest[4] == 0xFF
-					&& dest[5] == 0xFF)
-			{
-				found_packet = 1;
-				break;
-			}
-
-			// AppleTalk multicast?
-			if (allow_atalk)
-			{
-				if (dest[0] == 0x09
-					&& dest[1] == 0x00
-					&& dest[2] == 0x07)
-				{
-					if (dest[3] == 0x00
-						&& dest[4] == 0x00)
-					{
-						found_packet = 1;
-						break;
-					}
-					else if (dest[3] == 0xFF
-						&& dest[4] == 0xFF
-						&& dest[5] == 0xFF)
-					{
-						found_packet = 1;
-						break;
-					}
-				}
-			}
-
-			// Did not find a packet that matches our filters (own MAC address,
-			// ATalk Multicast or Broadcast), so move to next packet
-			enc_data_end();
-			net_move_rxpt(net_header.next_packet, 1);
-			enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
+			// TODO ERROR HANDLE
 		}
-		while (--packet_counter);
 
-		if (found_packet == 0)
+		/*
+		 * Move the length bytes into the correct position. The length
+		 * bytes for both Daynaport and Nuvolink seem to be the same -
+		 * length of the payload excluding length and flag bytes, except
+		 * little endian vs big endian.
+		 */
+		read_buffer[0] = (uint8_t) ((net_header->length) >> 8);
+		read_buffer[1] = (uint8_t) (net_header->length);
+		read_buffer[2] = 0x00;
+		read_buffer[3] = 0x00;
+		read_buffer[4] = 0x00;
+
+		/*
+		 * Flagging another byte as waiting does make a big difference in
+		 * transfer speeds (5.4mb FILE 3:03 VS 3:35). Per the driver docs,
+		 * a 0x10 means there is another packet ready to be read.
+		 * Presumably this means the driver doesn't just wait for it's
+		 * polling interval to elapse before asking for another packet.
+		 */
+		if (net_size() > 1)
 		{
-			// send "No Packets" message
-			debug(DEBUG_LINK_RX_PACKET_DROPPED);
-			phy_phase(PHY_PHASE_DATA_IN);
-			for (uint8_t i = 0; i < 6; i++)
-			{
-				phy_data_offer(0x00);
-			}
+			read_buffer[5] = 0x10;
 		}
-		else // Found a packet to send
+		else
 		{
-			if (debug_enabled())
-			{
-				debug(DEBUG_LINK_RX_PACKET_START);
-				if (debug_verbose())
-				{
-					// report packet length
-					debug_dual(read_buffer[2], read_buffer[3]);
-				}
-			}
-
-			/*
-			 * Move the length bytes into the correct position. The length
-			 * bytes for both Daynaport and Nuvolink seem to be the same -
-			 * length of the payload excluding length and flag bytes, except
-			 * little endian vs big endian.
-			 */
-			read_buffer[0] = (uint8_t) (net_header.length >> 8);
-			read_buffer[1] = (uint8_t) net_header.length;
-			read_buffer[2] = 0x00;
-			read_buffer[3] = 0x00;
-			read_buffer[4] = 0x00;
-
-			/*
-			 * Flagging another byte as waiting does make a big difference in
-			 * transfer speeds (5.4mb FILE 3:03 VS 3:35). Per the driver docs,
-			 * a 0x10 means there is another packet ready to be read.
-			 * Presumably this means the driver doesn't just wait for it's
-			 * polling interval to elapse before asking for another packet.
-			 */
-			if (packet_counter > 1)
-			{
-				read_buffer[5] = 0x10;
-			}
-			else
-			{
-				read_buffer[5] = 0x00;
-			}
-
-			/*
-			 * Ensure data length isn't more than the amount the driver
-			 * said it can read (although this always seems to be 0x05F4
-			 * which is 1524 which is 1518 + the 6 driver preamble bytes)
-			 */
-			if (net_header.length > allocation - 6)
-			{
-				net_header.length = allocation - 6;
-			}
-
-			phy_phase(PHY_PHASE_DATA_IN);
-
-			// send the header
-			for (uint16_t i = 0; i < 6; i++)
-			{
-				phy_data_offer(read_buffer[i]);
-			}
-
-			/*
-			 * This pause necessary for the driver to properly read the
-			 * packets. It might need to have time to parse the length out
-			 * before reading the rest of it. 30us - 60us seemed to work
-			 * reliably on my SE/30.  The SE did not work with 40 or 60 but
-			 * did with 100.  There doesn't seem to be an significant
-			 * performance penalty but there is a significant increase in
-			 * compatibility.
-			 */
-			_delay_us(100);
-
-			// send Dest MAC information already read for filter purposes
-			for (uint16_t i = 0; i < 6; i++)
-			{
-				phy_data_offer(dest[i]);
-			}
-
-			/*
-			 * Send packet to computer, calling the version that doesn't
-			 * check for /ATN as it seems to run about 15% faster. Send packet,
-			 * substracting 6 from the length to account for MAC Address info
-			 * already sent.
-			 */
-			phy_data_offer_stream(&ENC_USART, net_header.length - 6);
-
-			// move to next packet
-			enc_data_end();
-			net_move_rxpt(net_header.next_packet, 1);
-			enc_cmd_set(ENC_ECON2, ENC_PKTDEC_bm);
-			if (debug_enabled())
-			{
-				if (read_buffer[5] == 0x10)
-				{
-					debug(DEBUG_LINK_RX_PACKET_DONE_MORE_WAITING);
-				}
-				else
-				{
-					debug(DEBUG_LINK_RX_PACKET_DONE);
-				}
-			}
+			read_buffer[5] = 0x00;
 		}
+
+		/*
+		 * Ensure data length isn't more than the amount the driver
+		 * said it can read (although this always seems to be 0x05F4
+		 * which is 1524 which is 1518 + the 6 driver preamble bytes)
+		 * 
+		 * TODO HANDLE THIS CONDITION
+		 */
+/*		uint16_t 
+		if (net_header.length > allocation - 6)
+		{
+			net_header.length = allocation - 6;
+		}
+*/
+
+		phy_phase(PHY_PHASE_DATA_IN);
+		// send the header
+		for (uint16_t i = 0; i < 6; i++)
+		{
+			phy_data_offer(read_buffer[i]);
+		}
+
+		/*
+		 * This pause necessary for the driver to properly read the
+		 * packets. It might need to have time to parse the length out
+		 * before reading the rest of it. 30us - 60us seemed to work
+		 * reliably on my SE/30.  The SE did not work with 40 or 60 but
+		 * did with 100.  There doesn't seem to be an significant
+		 * performance penalty but there is a significant increase in
+		 * compatibility.
+		 */
+		_delay_us(100);
+
+		// send data
+		net_stream_read(phy_data_offer_stream);
 	}
-	enc_unlock();
 
 	// Close out transaction
 	if (phy_is_atn_asserted())
@@ -909,8 +745,9 @@ void link_check_rx(void)
 		}
 		else
 		{
+			// discard packet
 			debug(DEBUG_LINK_RX_SKIP);
-			link_skip_packet();
+			net_skip();
 		}
 	}
 }
@@ -947,7 +784,6 @@ uint8_t link_main(void)
 		uint16_t txreq = 0;
 		while (phy_is_active() && ((ENC_PORT_EXT.IN & ENC_PIN_INT) || txreq))
 		{
-			while (enc_lock());
 			if (txreq)
 			{
 				// initiator wants to send a packet
@@ -973,7 +809,6 @@ uint8_t link_main(void)
 				//_delay_us(100);
 				txreq = link_nuvo_message_out_post_rx();
 			}
-			enc_unlock();
 		}
 		asked_for_reselection = 0;
 		if (phy_is_active())

@@ -23,39 +23,6 @@
 #include <avr/io.h>
 
 /*
- * Helper functions for manipulating the Ethernet device. This abstract out
- * some of the more common operations, though calling the functions in enc.c
- * will still be needed to use the chip.
- */
-
-/*
- * Defines the high byte value for end of the region where the receive buffer
- * is, starting at 0x000 and extending through 0xXXFF, where 0xXX is this
- * value. All remaining space is allocated to the transmit buffer.
- */
-#define NET_ERXNDH_VALUE    0x13
-
-/*
- * Defines the starting point where packets to be transmitted are stored.
- * There are two regions, each 1536 bytes in size reserved for this purpose.
- * They can be switched between in the transmit functions based on the provided
- * buffer selection value.
- */
-#define NET_XMIT_BUF1       0x14
-#define NET_XMIT_BUF2       0x1A
-
-/*
- * Defines the array offsets within received data where the various data
- * structures are supposed to live, indexed from zero.
- */
-#define NET_HEAD_RXPTL      0
-#define NET_HEAD_RXPTH      1
-#define NET_HEAD_RXLENL     2
-#define NET_HEAD_RXLENH     3
-#define NET_HEAD_STATL      4
-#define NET_HEAD_STATH      5
-
-/*
  * Defines the return format of information from the header processor
  * function. These are simply copied from the array 
  * 
@@ -75,7 +42,33 @@ typedef struct NetHeader_t {
 	uint16_t length;
 	uint8_t statl;
 	uint8_t stath;
+	uint8_t dest[6];
+	uint16_t packet_data;
 } NetHeader;
+
+/*
+ * Options for providing to net_set_filter.
+ */
+typedef enum {
+	NET_FILTER_UNICAST,     // unicast only
+	NET_FILTER_BROADCAST,   // unicast, plus broadcast
+	NET_FILTER_MULTICAST    // unicast, broadcast, and multicast
+} NETFILTER;
+
+/*
+ * Return values for the functions.
+ */
+typedef enum {
+	NET_OK = 0,
+	NET_LOCKED,             // Ethernet subsystem locked in other context
+	NET_BUSY,               // device is temporarily unable to accept request
+	NET_NO_DATA             // no data are available
+} NETSTAT;
+
+/*
+ * Provides the current number of packets in the headers array.
+ */
+#define net_size()          NET_PACKET_SIZE
 
 /*
  * Initalizes the Ethernet controller by writing appropriate values to its
@@ -89,46 +82,53 @@ typedef struct NetHeader_t {
 void net_setup(uint8_t*);
 
 /*
- * Fills the given NetHeader with the information contained in the given set
- * of bytes read from the controller chip. This will read the first 6 bytes
- * to generate the header information.
- * 
- * This uses the byte offsets declared earlier. Since the first byte read
- * via enc_data_read() is often invalid, be careful about the pointer passed
- * into this function or invalid data may be stored.
+ * Provides the current packet of interest in the given pointer, or NULL if
+ * there is none.
  */
-void net_process_header(uint8_t*, NetHeader*);
+NETSTAT net_get(volatile NetHeader* header);
 
 /*
- * Moves the read pointer(s) to the given location, with adjustments as
- * needed for the device per errata.
+ * Updates the filtering system to match packets of the given type.
  * 
- * This should always be called after packet reading is finished to set buffer
- * pointers to the correct location. This should be given the address of the
- * next read pointer position that was stored in the receive status bytes of
- * the previous packet.
- * 
- * To be particular, this will set ERXRDPT to be one less than the given value,
- * per errata 14.  This will optionally set ERDPT to the given value if the
- * second parameter is true, for use in instances when that pointer was not
- * already incremented to the correct location (such as when only part of a
- * packet was read into local memory).
+ * If given a function pointer that is non-NULL, that function will be called
+ * for each multicast packet encountered, with the index in the headers array
+ * to check. That function should return true to accept the packet, or false
+ * to reject it. Note that the function may be called from the interrupt
+ * context.
  */
-void net_move_rxpt(uint16_t, uint8_t);
+NETSTAT net_set_filter(NETFILTER ftype, uint8_t (*mcast_filter)(NetHeader*));
 
 /*
- * Moves the write pointer into the correct location to write data. The
- * parameter chooses the transmission buffer to select. This should be invoked
- * prior to calling net_tx_write().
+ * Skips past the current packet, adjusting pointers as needed.
  */
-void net_move_txpt(uint8_t);
+NETSTAT net_skip(void);
 
 /*
- * Instructs the device to transmit the packet in the given buffer of the given
- * length. Before invoking this, be sure that the data in the packet buffer is
- * ready to be sent, and that the device isn't currently trying to transmit a
- * packet.
+ * Performs a read action, streaming packet data into the given function from
+ * the Ethernet controller.
+ * 
+ * When invoked, this will start a read operation against the network packet
+ * pointed to by NET_PACKET_PTR, then call the given function with the number
+ * of bytes that should be read from the given USART. Once that returns, this
+ * will move the read pointers past the packet.
+ */ 
+NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t));
+
+/*
+ * Performs a write action, streaming data from the given function into the
+ * Ethernet controller.
+ * 
+ * When invoked, this will begin a write operation, write the status byte,
+ * then call the provided function with the given number of bytes that need
+ * to be provided into the ENC28J60 USART. Once that function returns, the
+ * packet will be finalized and queued for transmission.
  */
-void net_transmit(uint8_t, uint16_t);
+NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length);
+
+/*
+ * Checks if the device is ready to accept a packet of the given size. This
+ * will provide NET_OK if ready, and NET_BUSY if not.
+ */
+NETSTAT net_write_ready(uint16_t size);
 
 #endif /* NET_H */
