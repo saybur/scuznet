@@ -160,10 +160,15 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define ENC_BANK                GPIOR4
 
 /*
- * DMA channels reserved for the networking subsystem.
+ * DMA channels reserved for the networking subsystem, and the 16-bit address
+ * of the relevant CTRLA registers (see datasheet 5.15 for offsets, and 34 for
+ * the peripheral memory addresses).
  */
-#define NET_DMA_READ            DMA.CH2
-#define NET_DMA_WRITE           DMA.CH3
+#define NET_DMA_WRITE           DMA.CH2
+#define NET_DMA_WRITE_CTRLADDR  0x0130
+#define NET_DMA_READ            DMA.CH3
+#define NET_DMA_READ_CTRLADDR   0x0140
+#define NET_DMA_READ_ISR        DMA_CH3_vect
 
 /*
  * Used to manage concurrency in the networking code.
@@ -176,6 +181,8 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
  */
 #define NET_PACKET_PTR          GPIO6
 #define NET_PACKET_SIZE         GPIO7
+#define NET_SCRATCH             GPIO8
+#define NET_SCRATCH_IOADDR      0x08
 
 /*
  * ****************************************************************************

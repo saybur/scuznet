@@ -61,6 +61,22 @@ static volatile NetHeader net_headers[NET_HEADERS_SIZE];
 static uint8_t (*mcast_filter)(NetHeader*);
 
 /*
+ * Two arrays of equal length for the DMA units involved with reading packet
+ * headers; one array is fixed for the write side (including the RBM command)
+ * and the other is written into with received data.
+ */
+#define NET_DMA_BUFFER_LENGTH 13
+static uint8_t dma_read_arr[13];
+static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 6 bytes of status data
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF  // destination MAC for filtering
+};
+
+// the fixed CTRLA register contents used to start the DMA units
+#define NET_DMA_CTRLA     (DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
+#define NET_DMA_STARTCMD  0x82 // the above masks, plus ENABLE
+
+/*
  * If there is a packet in the internal ring buffer, this advances to the
  * next packet atomically. Try to avoid doing this elsewhere, this operation
  * can be twitchy.
@@ -112,6 +128,32 @@ static void net_transmit(uint16_t length)
  */
 void net_setup(uint8_t* mac)
 {
+	/*
+	 * Setup DMA channels. We use two DMA units for handling packet header
+	 * reading, which would otherwise occupy significant interrupt time.
+	 */
+	NET_DMA_WRITE.SRCADDR0 = (uint8_t) ((uint16_t) (&dma_write_arr));
+	NET_DMA_WRITE.SRCADDR1 = (uint8_t) (((uint16_t) (&dma_write_arr)) >> 8);
+	NET_DMA_WRITE.SRCADDR2 = 0;
+	NET_DMA_WRITE.DESTADDR0 = (uint8_t) ((uint16_t) &ENC_USART);
+	NET_DMA_WRITE.DESTADDR1 = (uint8_t) (((uint16_t) (&ENC_USART)) >> 8);
+	NET_DMA_WRITE.DESTADDR2 = 0;
+	NET_DMA_WRITE.ADDRCTRL = DMA_CH_SRCDIR_INC_gc | DMA_CH_SRCRELOAD_TRANSACTION_gc;
+	NET_DMA_WRITE.CTRLA = NET_DMA_CTRLA;
+	NET_DMA_WRITE.TRIGSRC = ENC_DMA_TX_TRIG;
+	NET_DMA_WRITE.TRFCNT = NET_DMA_BUFFER_LENGTH;
+	NET_DMA_READ.SRCADDR0 = (uint8_t) ((uint16_t) &ENC_USART);
+	NET_DMA_READ.SRCADDR1 = (uint8_t) (((uint16_t) (&ENC_USART)) >> 8);
+	NET_DMA_READ.SRCADDR2 = 0;
+	NET_DMA_READ.DESTADDR0 = (uint8_t) ((uint16_t) (&dma_read_arr));
+	NET_DMA_READ.DESTADDR1 = (uint8_t) (((uint16_t) (&dma_read_arr)) >> 8);
+	NET_DMA_READ.DESTADDR2 = 0;
+	NET_DMA_READ.ADDRCTRL = DMA_CH_DESTDIR_INC_gc | DMA_CH_DESTRELOAD_TRANSACTION_gc;
+	NET_DMA_READ.CTRLA = NET_DMA_CTRLA;
+	NET_DMA_READ.CTRLB = DMA_CH_TRNINTLVL_LO_gc;
+	NET_DMA_READ.TRIGSRC = ENC_DMA_RX_TRIG;
+	NET_DMA_READ.TRFCNT = NET_DMA_BUFFER_LENGTH;
+
 	/*
 	 * 6.1: setup RX buffer.
 	 * 
@@ -203,11 +245,17 @@ void net_setup(uint8_t* mac)
 	_delay_us(12);
 
 	/*
-	 * Finally, enable driving /INT, enable interrupts on packet reception,
-	 * and enable packet reception itself.
+	 * Enable driving /INT, enable driving it when packets arrive, and enable
+	 * packet reception itself.
 	 */
 	enc_cmd_write(ENC_EIE, ENC_PKTIE_bm | ENC_INTIE_bm);
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
+
+	/*
+	 * Enable interrupts when /E_INT is asserted (pin was set up earlier
+	 * in enc.c).
+	 */
+	ENC_PORT_EXT.INTCTRL = PORT_INT1LVL_LO_gc;
 }
 
 NETSTAT net_get(volatile NetHeader* header)
@@ -320,6 +368,10 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
  * ============================================================================
  */
 
+// needed for getting raw addresses/values in the basic asm below
+// https://gcc.gnu.org/onlinedocs/gcc-4.8.5/cpp/Stringification.html
+#define XSTRINGIFY(s)   #s
+#define STRINGIFY(s)    XSTRINGIFY(s)
 
 /*
 static void net_process_header(uint8_t* v, NetHeader* s)
@@ -371,10 +423,59 @@ static void net_process_header(uint8_t* v, NetHeader* s)
 	}
 }*/
 
+/*
+ * Triggered on the falling edge of /E_INT, which occurs when there are packets
+ * waiting on the device to be read. This part of the interrupt just triggers
+ * the DMA unit.
+ * 
+ * Packet reception happens quite a bit and requires communicating with the
+ * ENC28J60 chip via SPI. This takes nontrivial amounts of time, during which
+ * other activites are halted. Several things are done to ensure the interrupt
+ * runs as fast as possible:
+ * 
+ * 1) /E_INT is only driven by packet reception. This removes the need to read
+ *    EPKTCNT: if /E_INT is low, there is always a packet waiting.
+ * 2) net_end() updates ERDPT to the position where the next packet will be
+ *    before re-enabling this interrupt, removing the need to update those
+ *    registers here.
+ * 3) The DMA channels are preconfigured to use the same memory buffers and
+ *    reload their initial state on completion. All we need to do is start
+ *    them to get the transaction rolling.
+ * 
+ * This allows the ISR to be a simple sequence of the following:
+ * 
+ * 1) Drive /E_CS low to activate the chip.
+ * 2) Start the writing DMA unit, which has a pre-baked RBM command to fetch
+ *    the packet header.
+ * 3) Start the reading DMA unit to get the data that will be arriving on the
+ *    SPI bus.
+ * 
+ * This is easy enough that the ISR is done "naked," to avoid GCC generating
+ * the usual preamble/postamble. All these instructions leave SREG alone, thus
+ * it does not need to be saved.
+ */
+ISR(ENC_INT_ISR, ISR_NAKED)
+{
+	__asm__(
+		// save contents of r16 to our scratch GPIO (1 cycle)
+		"out " STRINGIFY(NET_SCRATCH_IOADDR) ", r16 \n\t"
+		// load the bitmask for the /E_CS pin (1 cycle)
+		"ldi r16, " STRINGIFY(ENC_PIN_CS) " \n\t"
+		// drive /CS low (2 cycles)
+		"sts " STRINGIFY(ENC_PORT_OUTCLR_ADDR) ", r16 \n\t"
+		// load the DMA CTRLA data (1 cycle)
+		"ldi r16, " STRINGIFY(NET_DMA_STARTCMD) " \n\t"
+		// write CTRLA for the write channel, then the read channel (4 cycles)
+		"sts " STRINGIFY(NET_DMA_WRITE_CTRLADDR) ", r16 \n\t"
+		"sts " STRINGIFY(NET_DMA_READ_CTRLADDR) ", r16 \n\t"
+		// restore r16 before returning (1 cycle)
+		"in r16, " STRINGIFY(NET_SCRATCH_IOADDR) " \n\t"
+		// return from the interrupt (4 cycles)
+		"reti \n\t"
+	);
+}
 
-
-
-ISR(ENC_INT_ISR)
+ISR(NET_DMA_READ_ISR)
 {
 	// TODO implement
 }

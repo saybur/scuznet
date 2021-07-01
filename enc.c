@@ -22,9 +22,6 @@
 #include "config.h"
 #include "enc.h"
 
-// manages our primitive concurrency subsystem
-#define ENC_SEMAPHORE_bm 0x01
-
 #define ENC_ECON1_ARGUMENT 0x1F
 
 /*
@@ -129,8 +126,12 @@ void enc_init(void)
 	 * a little simpler to implement. To manually check, perform the following:
 	 * 
 	 * if (ENC_PORT_EXT.IN & ENC_PIN_INT) { };
+	 * 
+	 * This also causes the rising edge to be the assertion side for
+	 * interrupts. Set it up for INT1.
 	 */
-	ENC_INT_PINCTRL |= PORT_INVEN_bm;
+	ENC_INT_PINCTRL |= PORT_INVEN_bm | PORT_ISC_RISING_gc;
+	ENC_PORT_EXT.INT1MASK = ENC_PIN_INT;
 
 	// wait before we do anything with the reset line
 	_delay_ms(1);

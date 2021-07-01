@@ -87,6 +87,8 @@
 #define ENC_USART               USARTE1
 #define ENC_USART_BAUDCTRL      0
 #define ENC_PORT                PORTE
+#define ENC_PORT_OUTSET_ADDR    0x0685
+#define ENC_PORT_OUTCLR_ADDR    0x0686
 #define ENC_PIN_CS              PIN4_bm
 #define ENC_PIN_XCK             PIN5_bm
 #define ENC_PIN_RX              PIN6_bm

@@ -72,10 +72,15 @@
  * 
  * The /INT pin must be assigned to INT1 on the relevant port.
  * 
+ * Address offsets are from datasheet 13.16 and the peripheral memory map is
+ * from 34.
+ * 
  */
 #define ENC_USART               USARTF0
 #define ENC_USART_BAUDCTRL      0
 #define ENC_PORT                PORTF
+#define ENC_PORT_OUTSET_ADDR    0x06A5
+#define ENC_PORT_OUTCLR_ADDR    0x06A6
 #define ENC_PIN_CS              PIN0_bm
 #define ENC_PIN_XCK             PIN1_bm
 #define ENC_PIN_RX              PIN2_bm
