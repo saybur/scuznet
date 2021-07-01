@@ -128,10 +128,10 @@ void enc_init(void)
 	 * if (ENC_PORT_EXT.IN & ENC_PIN_INT) { };
 	 * 
 	 * This also causes the rising edge to be the assertion side for
-	 * interrupts. Set it up for INT1.
+	 * interrupts. Set it up for INT0.
 	 */
 	ENC_INT_PINCTRL |= PORT_INVEN_bm | PORT_ISC_RISING_gc;
-	ENC_PORT_EXT.INT1MASK = ENC_PIN_INT;
+	ENC_PORT_EXT.INT0MASK = ENC_PIN_INT;
 
 	// wait before we do anything with the reset line
 	_delay_ms(1);

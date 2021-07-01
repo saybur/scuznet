@@ -255,7 +255,7 @@ void net_setup(uint8_t* mac)
 	 * Enable interrupts when /E_INT is asserted (pin was set up earlier
 	 * in enc.c).
 	 */
-	ENC_PORT_EXT.INTCTRL = PORT_INT1LVL_LO_gc;
+	ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
 }
 
 NETSTAT net_get(volatile NetHeader* header)
@@ -449,6 +449,7 @@ static void net_process_header(uint8_t* v, NetHeader* s)
  *    the packet header.
  * 3) Start the reading DMA unit to get the data that will be arriving on the
  *    SPI bus.
+ * 4) Stop further /E_INT interrupts until we're ready to handle them again.
  * 
  * This is easy enough that the ISR is done "naked," to avoid GCC generating
  * the usual preamble/postamble. All these instructions leave SREG alone, thus
@@ -468,6 +469,9 @@ ISR(ENC_INT_ISR, ISR_NAKED)
 		// write CTRLA for the write channel, then the read channel (4 cycles)
 		"sts " STRINGIFY(NET_DMA_WRITE_CTRLADDR) ", r16 \n\t"
 		"sts " STRINGIFY(NET_DMA_READ_CTRLADDR) ", r16 \n\t"
+		// stop further interrupt triggers for /E_INT (3 cycles)
+		"ldi r16, 0x00 \n\t"
+		"sts " STRINGIFY(ENC_PORT_EXT_ICTRL_ADDR) ", r16 \n\t"
 		// restore r16 before returning (1 cycle)
 		"in r16, " STRINGIFY(NET_SCRATCH_IOADDR) " \n\t"
 		// return from the interrupt (4 cycles)

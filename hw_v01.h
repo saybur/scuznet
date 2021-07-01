@@ -70,7 +70,8 @@
  * 
  * ****************************************************************************
  * 
- * The /INT pin must be assigned to INT1 on the relevant port.
+ * The /INT pin must be assigned to INT0 on the relevant port. No other
+ * pin interrupts are allowed on this port.
  * 
  * Address offsets are from datasheet 13.16 and the peripheral memory map is
  * from 34.
@@ -88,10 +89,11 @@
 #define ENC_RX_PINCTRL          PORTF.PIN2CTRL
 
 #define ENC_PORT_EXT            PORTF
+#define ENC_PORT_EXT_ICTRL_ADDR 0x06A9
 #define ENC_PIN_RST             PIN4_bm
 #define ENC_PIN_INT             PIN5_bm
 #define ENC_INT_PINCTRL         PORTF.PIN5CTRL
-#define ENC_INT_ISR             PORTF_INT1_vect
+#define ENC_INT_ISR             PORTF_INT0_vect
 
 #define ENC_DMA_TX_TRIG         DMA_CH_TRIGSRC_USARTF0_DRE_gc
 #define ENC_DMA_RX_TRIG         DMA_CH_TRIGSRC_USARTF0_RXC_gc
