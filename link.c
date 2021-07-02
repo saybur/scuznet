@@ -138,60 +138,6 @@ static void link_send_packet(uint16_t length)
 }
 
 /*
- * Function that handles the AppleTalk check for net_set_filter() based on
- * the internal state of the filtering check.
- */
-static uint8_t link_atalk_check(NetHeader* header)
-{
-	uint8_t* dest = header->dest;
-
-	// unicast?
-	if (dest[0] == mac_dyn[0]
-			&& dest[1] == mac_dyn[1]
-			&& dest[2] == mac_dyn[2]
-			&& dest[3] == mac_dyn[3]
-			&& dest[4] == mac_dyn[4]
-			&& dest[5] == mac_dyn[5])
-	{
-		return 1;
-	}
-
-	// broadcast?
-	if (dest[0] == 0xFF
-			&& dest[1] == 0xFF
-			&& dest[2] == 0xFF
-			&& dest[3] == 0xFF
-			&& dest[4] == 0xFF
-			&& dest[5] == 0xFF)
-	{
-		return 1;
-	}
-
-	// AppleTalk multicast?
-	if (allow_atalk)
-	{
-		if (dest[0] == 0x09
-			&& dest[1] == 0x00
-			&& dest[2] == 0x07)
-		{
-			if (dest[3] == 0x00
-				&& dest[4] == 0x00)
-			{
-				return 1;
-			}
-			else if (dest[3] == 0xFF
-				&& dest[4] == 0xFF
-				&& dest[5] == 0xFF)
-			{
-				return 1;
-			}
-		}
-	}
-
-	return 0;
-}
-
-/*
  * ============================================================================
  *   OPERATION HANDLERS
  * ============================================================================
@@ -396,12 +342,12 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 	 */
 	if (data[7] & 0x80)
 	{
-		net_set_filter(NET_FILTER_MULTICAST, NULL);
+		net_set_filter(NET_FILTER_MULTICAST);
 		debug(DEBUG_LINK_FILTER_MULTICAST);
 	}
 	else
 	{
-		net_set_filter(NET_FILTER_BROADCAST, NULL);
+		net_set_filter(NET_FILTER_BROADCAST);
 		debug(DEBUG_LINK_FILTER_UNICAST);
 	}
 
@@ -448,11 +394,11 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 
 	if (allow_atalk)
 	{
-		net_set_filter(NET_FILTER_MULTICAST, link_atalk_check);
+		net_set_filter(NET_FILTER_MULTICAST);
 	}
 	else
 	{
-		net_set_filter(NET_FILTER_BROADCAST, NULL);
+		net_set_filter(NET_FILTER_BROADCAST);
 	}
 
 	logic_status(LOGIC_STATUS_GOOD);

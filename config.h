@@ -171,9 +171,9 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define NET_DMA_READ_ISR        DMA_CH3_vect
 
 /*
- * Used to manage concurrency in the networking code.
+ * Used to manage state within the netorking code.
  */
-#define NET_LOCK                GPIO5
+#define NET_STATUS              GPIO5
 
 /*
  * Used to monitor the current number of packet headers stored in memory. See
@@ -183,6 +183,13 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define NET_PACKET_SIZE         GPIO7
 #define NET_SCRATCH             GPIO8
 #define NET_SCRATCH_IOADDR      0x08
+
+/*
+ * 16-bit pointer to the base of ERDPTL
+ */
+#define NET_ERDPTL_NEXT         GPIO9
+#define NET_ERDPTH_NEXT         GPIOA
+
 
 /*
  * ****************************************************************************

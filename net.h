@@ -82,6 +82,20 @@ typedef enum {
 void net_setup(uint8_t*);
 
 /*
+ * These calls manage access for the net subsystem.
+ * 
+ * Whenever the network chip gets a packet, interrupts handle reading
+ * components of the data. When this is happening, client code cannot use the
+ * chip. To manage access, whenever a user needs to read or write a packet,
+ * net_start() should be called to stop the periodic packet reception code
+ * until net_end() is called to release the subsystem.
+ * 
+ * net_start() will block until the networking subsystem is ready to be used.
+ */
+NETSTAT net_start(void);
+NETSTAT net_end(void);
+
+/*
  * Provides the current packet of interest in the given pointer, or NULL if
  * there is none.
  */
@@ -89,14 +103,8 @@ NETSTAT net_get(volatile NetHeader* header);
 
 /*
  * Updates the filtering system to match packets of the given type.
- * 
- * If given a function pointer that is non-NULL, that function will be called
- * for each multicast packet encountered, with the index in the headers array
- * to check. That function should return true to accept the packet, or false
- * to reject it. Note that the function may be called from the interrupt
- * context.
  */
-NETSTAT net_set_filter(NETFILTER ftype, uint8_t (*mcast_filter)(NetHeader*));
+NETSTAT net_set_filter(NETFILTER ftype);
 
 /*
  * Skips past the current packet, adjusting pointers as needed.

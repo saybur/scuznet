@@ -30,47 +30,49 @@
  * is, starting at 0x0000 and extending through 0xXXFF, where 0xXX is this
  * value. All remaining space is allocated to the transmit buffer.
  */
-#define NET_ERXNDH_VALUE    0x19
+#define NET_ERXNDH_VALUE        0x19
 
 /*
  * Defines the starting point where packets to be transmitted are stored,
  * starting at 0xXX00 and extending through 0x1FFF, where 0xXX is this
  * value.
  */
-#define ENC_XMIT_STARTH    (NET_ERXNDH_VALUE + 1)
+#define ENC_XMIT_STARTH         (NET_ERXNDH_VALUE + 1)
 
 /*
- * Defines the array offsets within received data where the various data
- * structures are supposed to live, indexed from zero.
+ * Flags within the NET_STATUS GPIOR
  */
-#define NET_HEAD_RXPTL      0
-#define NET_HEAD_RXPTH      1
-#define NET_HEAD_RXLENL     2
-#define NET_HEAD_RXLENH     3
-#define NET_HEAD_STATL      4
-#define NET_HEAD_STATH      5
+#define NETSTAT_ERDPT_DIRTY     _BV(1)
 
 /*
  * The headers for the most recently received packets.
  */
-#define NET_HEADERS_SIZE    16 // must be a power of 2
-#define NET_HEADERS_MASK    (NET_HEADERS_SIZE - 1);
+#define NET_HEADERS_SIZE        16 // must be a power of 2
+#define NET_HEADERS_MASK        (NET_HEADERS_SIZE - 1);
 static volatile NetHeader net_headers[NET_HEADERS_SIZE];
-
-// function to call that helps filter multicast traffic
-static uint8_t (*mcast_filter)(NetHeader*);
 
 /*
  * Two arrays of equal length for the DMA units involved with reading packet
  * headers; one array is fixed for the write side (including the RBM command)
- * and the other is written into with received data.
+ * and the other is written into with received data. The read array is accessed
+ * only from the interrupt context and is thus non-volatile.
  */
-#define NET_DMA_BUFFER_LENGTH 13
-static uint8_t dma_read_arr[13];
+#define NET_DMA_BUFFER_LENGTH 7
+static uint8_t dma_read_arr[7];
 static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
-	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 6 bytes of status data
-	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF  // destination MAC for filtering
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF // 6 bytes of status data
 };
+
+/*
+ * Defines the array offsets within dma_read_arr where the various values live.
+ * Note that byte 0 is the RBM response and is thus not useful.
+ */
+#define NET_HEAD_RXPTL          1
+#define NET_HEAD_RXPTH          2
+#define NET_HEAD_RXLENL         3
+#define NET_HEAD_RXLENH         4
+#define NET_HEAD_STATL          5
+#define NET_HEAD_STATH          6
 
 // the fixed CTRLA register contents used to start the DMA units
 #define NET_DMA_CTRLA     (DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
@@ -258,6 +260,48 @@ void net_setup(uint8_t* mac)
 	ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
 }
 
+NETSTAT net_start(void)
+{
+	/*
+	 * Disable /E_INT reception interrupts to avoid that mucking with
+	 * transactions the client wants to execute. This disables all port
+	 * interrupts, per the configuration contract.
+	 */
+	ENC_PORT_EXT.INTCTRL = 0;
+
+	/*
+	 * Wait until the DMA units spin down. After that happens, they fire an
+	 * ISR, clean up, and wait for /E_INT to go again; it never will due to
+	 * above line disabling it, so after this clears we are safe to give
+	 * control to clients.
+	 */
+	while (NET_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
+
+	// ok to continue
+	return NET_OK;
+}
+
+NETSTAT net_end(void)
+{
+	// update ERDPT
+	if (NET_STATUS & NETSTAT_ERDPT_DIRTY)
+	{
+		// restore ERDPT to where the next inbound packet will be
+		enc_cmd_write(ENC_ERDPTL, NET_ERDPTL_NEXT);
+		enc_cmd_write(ENC_ERDPTH, NET_ERDPTH_NEXT);
+	}
+
+	// re-enable /E_INT packet reception interrupts
+	// (only do this if we have space to store)
+	if (NET_PACKET_SIZE < NET_HEADERS_SIZE - 1)
+	{
+		ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+	}
+
+	// done
+	return NET_OK;
+}
+
 NETSTAT net_get(volatile NetHeader* header)
 {
 	(void) header; // silence compiler
@@ -273,11 +317,8 @@ NETSTAT net_get(volatile NetHeader* header)
 	}
 }
 
-NETSTAT net_set_filter(NETFILTER ftype, uint8_t (*mc_filter)(NetHeader*))
+NETSTAT net_set_filter(NETFILTER ftype)
 {
-	// update the multicast filter
-	mcast_filter = mc_filter;
-
 	/*
 	 * Per 7.2.1, we should disable packet reception, reset ERXFCON, then
 	 * re-enable packet reception.
@@ -326,6 +367,7 @@ NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t))
 	if (res) return res;
 
 	// start the read at the packet data
+	NET_STATUS |= NETSTAT_ERDPT_DIRTY;
 	enc_cmd_write(ENC_ERDPTL, header->packet_data);
 	enc_cmd_write(ENC_ERDPTH, (header->packet_data) >> 8);
 	enc_read_start();
@@ -346,6 +388,8 @@ NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t))
 
 NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 {
+	// TODO verify that no packet is waiting for transmission?
+
 	// move TX pointer
 	enc_cmd_write(ENC_EWRPTL, 0x00);
 	enc_cmd_write(ENC_EWRPTH, ENC_XMIT_STARTH);
@@ -374,56 +418,6 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 #define STRINGIFY(s)    XSTRINGIFY(s)
 
 /*
-static void net_process_header(uint8_t* v, NetHeader* s)
-{
-	s->next_packet = (v[NET_HEAD_RXPTH] << 8) + v[NET_HEAD_RXPTL];
-	s->length = (v[NET_HEAD_RXLENH] << 8) + v[NET_HEAD_RXLENL];
-	s->statl = v[NET_HEAD_STATL];
-	s->stath = v[NET_HEAD_STATH];
-}
-*/
-
-/*
- * Moves the read pointer(s) to the given location, with adjustments as
- * needed for the device per errata.
- * 
- * This should always be called after packet reading is finished to set buffer
- * pointers to the correct location. This should be given the address of the
- * next read pointer position that was stored in the receive status bytes of
- * the previous packet.
- * 
- * To be particular, this will set ERXRDPT to be one less than the given value,
- * per errata 14.  This will optionally set ERDPT to the given value if the
- * second parameter is true, for use in instances when that pointer was not
- * already incremented to the correct location (such as when only part of a
- * packet was read into local memory).
- */
-/*static void net_move_rxpt(uint16_t next, uint8_t move_rbm)
-{
-	if(next == 0)
-	{
-		enc_cmd_write(ENC_ERXRDPTL, 0xFF);
-		enc_cmd_write(ENC_ERXRDPTH, NET_ERXNDH_VALUE);
-		if (move_rbm)
-		{
-			enc_cmd_write(ENC_ERDPTL, 0x00);
-			enc_cmd_write(ENC_ERDPTH, 0x00);
-		}
-	}
-	else
-	{
-		uint16_t erxrdpt = next - 1;
-		enc_cmd_write(ENC_ERXRDPTL, (uint8_t) erxrdpt);
-		enc_cmd_write(ENC_ERXRDPTH, (uint8_t) (erxrdpt >> 8));
-		if (move_rbm)
-		{
-			enc_cmd_write(ENC_ERDPTL, (uint8_t) next);
-			enc_cmd_write(ENC_ERDPTH, (uint8_t) (next >> 8));
-		}
-	}
-}*/
-
-/*
  * Triggered on the falling edge of /E_INT, which occurs when there are packets
  * waiting on the device to be read. This part of the interrupt just triggers
  * the DMA unit.
@@ -437,7 +431,7 @@ static void net_process_header(uint8_t* v, NetHeader* s)
  *    EPKTCNT: if /E_INT is low, there is always a packet waiting.
  * 2) net_end() updates ERDPT to the position where the next packet will be
  *    before re-enabling this interrupt, removing the need to update those
- *    registers here.
+ *    registers here: the RBM command will always pull from the right address.
  * 3) The DMA channels are preconfigured to use the same memory buffers and
  *    reload their initial state on completion. All we need to do is start
  *    them to get the transaction rolling.
@@ -479,7 +473,61 @@ ISR(ENC_INT_ISR, ISR_NAKED)
 	);
 }
 
+/*
+ * Invoked when the read DMA unit completes a transaction, meaning the array
+ * has a packet header needing to be parsed.
+ */
 ISR(NET_DMA_READ_ISR)
 {
-	// TODO implement
+	/*
+	 * Decrement PKTDEC in ECON2. Done directly in ISR to bypass the call
+	 * overhead to the enc.c library, as well as the irrelevant bank switch
+	 * logic (ECON2 visible in all banks).
+	 */
+	ENC_PORT.OUTCLR = ENC_PIN_CS;
+	ENC_USART.DATA = ENC_OP_BFS | ENC_ECON2;
+	ENC_USART.DATA = 0;
+
+	// while that's transmitting, decode the packet pointer and store results
+	uint8_t pkt = (NET_PACKET_PTR + NET_PACKET_SIZE) & NET_HEADERS_MASK;
+	volatile NetHeader* header = &(net_headers[pkt]);
+	// first do the data offset for the current packet
+	// see 7.2.3, though this simplifies by knowing ERXST == 0
+	uint16_t pkt_data = (NET_ERDPTH_NEXT << 8) + NET_ERDPTL_NEXT;
+	pkt_data += 6;
+	if (((pkt_data & 0xFF00) >> 8) > (NET_ERXNDH_VALUE + 1))
+	{
+		pkt_data &= 0xFF;
+	}
+	header->packet_data = pkt_data;
+	// next packet values
+	NET_ERDPTH_NEXT = dma_read_arr[NET_HEAD_RXPTH];
+	NET_ERDPTL_NEXT = dma_read_arr[NET_HEAD_RXPTL];
+	header->next_packet =
+			(dma_read_arr[NET_HEAD_RXPTH] << 8)
+			+ dma_read_arr[NET_HEAD_RXPTL];
+	// then remaining status values
+	header->length =
+			(dma_read_arr[NET_HEAD_RXLENH] << 8)
+			+ dma_read_arr[NET_HEAD_RXLENL];
+	header->statl = dma_read_arr[NET_HEAD_STATL];
+	header->stath = dma_read_arr[NET_HEAD_STATH];
+
+	// clear received USART bytes (garbage response)
+	while (! (ENC_USART.STATUS & USART_RXCIF_bm));
+	ENC_USART.DATA;
+	while (! (ENC_USART.STATUS & USART_RXCIF_bm));
+	ENC_USART.DATA;
+	ENC_PORT.OUTSET = ENC_PIN_CS;
+
+	// TODO NET_STATUS |= NETSTAT_ERDPT_DIRTY;????
+	// maybe this whole thing isn't such a good idea...
+
+	// increment the packet counter
+	NET_PACKET_SIZE++;
+	// if we still have header storage, re-enable packet reception ISR
+	if (NET_PACKET_SIZE < NET_HEADERS_SIZE - 1)
+	{
+		ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+	}
 }
