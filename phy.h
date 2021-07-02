@@ -200,14 +200,17 @@ uint8_t phy_data_offer_block(uint8_t*);
  * The connected USART device needs to be in a form of an auto-increment mode
  * pointing at the correct location. This will exchange the given number of
  * bytes with the remote device.
+ * 
+ * This will return the number of bytes that could not be sent, and thus
+ * returns 0 on success.
  */
-void phy_data_offer_stream(USART_t*, uint16_t);
+uint16_t phy_data_offer_stream(USART_t*, uint16_t);
 
 /*
  * Specialized version of _offer_stream(), for use with the link device. This
  * version will eagerly abort if /ATN becomes asserted.
  */
-void phy_data_offer_stream_atn(USART_t*, uint16_t);
+uint16_t phy_data_offer_stream_atn(USART_t*, uint16_t);
 
 /*
  * Asks the initiator for a byte of data, waits until it is available, then

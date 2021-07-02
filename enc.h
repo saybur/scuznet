@@ -319,6 +319,11 @@
 #define ENC_STRCH_bm _BV(1)
 
 /*
+ * When nonzero, /E_INT is asserted (driven low)
+ */
+#define enc_is_int_asserted()   (! (ENC_PORT_EXT.IN & ENC_PIN_INT))
+
+/*
  * The response codes given by most functions.
  */
 typedef enum {

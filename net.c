@@ -40,16 +40,9 @@
 #define ENC_XMIT_STARTH         (NET_ERXNDH_VALUE + 1)
 
 /*
- * Flags within the NET_STATUS GPIOR
+ * Header for the received packet.
  */
-#define NETSTAT_ERDPT_DIRTY     _BV(1)
-
-/*
- * The headers for the most recently received packets.
- */
-#define NET_HEADERS_SIZE        16 // must be a power of 2
-#define NET_HEADERS_MASK        (NET_HEADERS_SIZE - 1);
-static volatile NetHeader net_headers[NET_HEADERS_SIZE];
+volatile NetHeader net_header;
 
 /*
  * Two arrays of equal length for the DMA units involved with reading packet
@@ -75,23 +68,71 @@ static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
 #define NET_HEAD_STATH          6
 
 // the fixed CTRLA register contents used to start the DMA units
-#define NET_DMA_CTRLA     (DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
-#define NET_DMA_STARTCMD  0x82 // the above masks, plus ENABLE
+#define NET_DMA_CTRLA           (DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
+#define NET_DMA_STARTCMD        0x82 // the above masks, plus ENABLE
 
 /*
- * If there is a packet in the internal ring buffer, this advances to the
- * next packet atomically. Try to avoid doing this elsewhere, this operation
- * can be twitchy.
+ * Used by net.h calls that may be invoked when the /E_INT interrupt is live,
+ * and thus will be vulnerable to having their communications trashed. This
+ * turns off that interrupt and waits for a pending DMA transaction to end.
  */
-static inline __attribute__((always_inline)) void advance_packet(void)
+static void net_lock(void)
 {
-	if (NET_PACKET_SIZE) // safe, never decremented in ISR
+	/*
+	 * Disable /E_INT reception interrupts to avoid that mucking with
+	 * transactions the client wants to execute. This disables all port
+	 * interrupts, per the configuration contract.
+	 */
+	ENC_PORT_EXT.INTCTRL = 0;
+
+	/*
+	 * Wait until the DMA units spin down. After that happens, they fire an
+	 * ISR, clean up, and wait for /E_INT to go again; it never will due to
+	 * above line disabling it, so after this clears we are safe to give
+	 * control to clients.
+	 */
+	while (NET_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
+}
+
+/*
+ * Complement to the above call. This restarts interrupts and should be
+ * invoked in all function exits where net_lock() was used.
+ */
+static void net_unlock(void)
+{
+	/*
+	 * If there isn't a packet in storage, re-enable /E_INT packet reception.
+	 * Due to the level trigger, if /E_INT is still driven the flag clear will
+	 * be immediately reset, which is the intended behavior.
+	 */
+	if (! net_pending())
 	{
-		ATOMIC_BLOCK(ATOMIC_FORCEON)
-		{
-			NET_PACKET_PTR = (NET_PACKET_PTR + 1) & NET_HEADERS_MASK;
-			NET_PACKET_SIZE--;
-		}
+		ENC_PORT_EXT.INTFLAGS = PORT_INT0IF_bm; // clear flag
+		ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+	}
+}
+
+/*
+ * Moves ERXRDPT (and optionally ERDPT) to the given address, following
+ * the requirements of erratas 5 and 14.
+ */
+static void net_move_rxpt(uint16_t next, uint8_t move_erdpt)
+{
+	if (move_erdpt)
+	{
+		enc_cmd_write(ENC_ERDPTL, (uint8_t) next);
+		enc_cmd_write(ENC_ERDPTH, (uint8_t) (next >> 8));
+	}
+	if(next == 0)
+	{
+		enc_cmd_write(ENC_ERXRDPTL, 0xFF);
+		enc_cmd_write(ENC_ERXRDPTH, NET_ERXNDH_VALUE);
+	}
+	else
+	{
+		next--;
+		enc_cmd_write(ENC_ERXRDPTL, (uint8_t) next);
+		enc_cmd_write(ENC_ERXRDPTH, (uint8_t) (next >> 8));
 	}
 }
 
@@ -117,7 +158,6 @@ static void net_transmit(uint16_t length)
 	// set ECON1.TXRTS, which starts transmission
 	enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
 }
-
 
 /*
  * ============================================================================
@@ -260,65 +300,10 @@ void net_setup(uint8_t* mac)
 	ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
 }
 
-NETSTAT net_start(void)
-{
-	/*
-	 * Disable /E_INT reception interrupts to avoid that mucking with
-	 * transactions the client wants to execute. This disables all port
-	 * interrupts, per the configuration contract.
-	 */
-	ENC_PORT_EXT.INTCTRL = 0;
-
-	/*
-	 * Wait until the DMA units spin down. After that happens, they fire an
-	 * ISR, clean up, and wait for /E_INT to go again; it never will due to
-	 * above line disabling it, so after this clears we are safe to give
-	 * control to clients.
-	 */
-	while (NET_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
-
-	// ok to continue
-	return NET_OK;
-}
-
-NETSTAT net_end(void)
-{
-	// update ERDPT
-	if (NET_STATUS & NETSTAT_ERDPT_DIRTY)
-	{
-		// restore ERDPT to where the next inbound packet will be
-		enc_cmd_write(ENC_ERDPTL, NET_ERDPTL_NEXT);
-		enc_cmd_write(ENC_ERDPTH, NET_ERDPTH_NEXT);
-	}
-
-	// re-enable /E_INT packet reception interrupts
-	// (only do this if we have space to store)
-	if (NET_PACKET_SIZE < NET_HEADERS_SIZE - 1)
-	{
-		ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
-	}
-
-	// done
-	return NET_OK;
-}
-
-NETSTAT net_get(volatile NetHeader* header)
-{
-	(void) header; // silence compiler
-	if (NET_PACKET_SIZE > 0)
-	{
-		header = &(net_headers[NET_PACKET_PTR]);
-		return NET_OK;
-	}
-	else
-	{
-		header = NULL;
-		return NET_NO_DATA;
-	}
-}
-
 NETSTAT net_set_filter(NETFILTER ftype)
 {
+	net_lock();
+
 	/*
 	 * Per 7.2.1, we should disable packet reception, reset ERXFCON, then
 	 * re-enable packet reception.
@@ -342,45 +327,50 @@ NETSTAT net_set_filter(NETFILTER ftype)
 	}
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 
+	net_unlock();
 	return NET_OK;
 }
 
 NETSTAT net_skip(void)
 {
-	if (net_size() > 0)
+	if (! net_pending())
 	{
-		uint16_t erxrdpt = net_headers[NET_PACKET_PTR].next_packet - 1;
-		enc_cmd_write(ENC_ERXRDPTL, (uint8_t) erxrdpt);
-		enc_cmd_write(ENC_ERXRDPTH, (uint8_t) (erxrdpt >> 8));
-		advance_packet();
+		return NET_NO_DATA;
 	}
+
+	net_move_rxpt(net_header.next_packet, 1);
+	NET_STATUS &= ~NETSTAT_PKT_PENDING;
 	return NET_OK;
 }
 
-NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t))
+NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t))
 {
-	NETSTAT res;
+	if (! net_pending())
+	{
+		return NET_NO_DATA;
+	}
 
-	// get the current packet data
-	NetHeader* header = NULL;
-	res = net_get(header);
-	if (res) return res;
-
-	// start the read at the packet data
-	NET_STATUS |= NETSTAT_ERDPT_DIRTY;
-	enc_cmd_write(ENC_ERDPTL, header->packet_data);
-	enc_cmd_write(ENC_ERDPTH, (header->packet_data) >> 8);
+	// ERDPT is already at the start of packet data, just start reading
 	enc_read_start();
-	func(&ENC_USART, header->length);
+	uint16_t rxlen = net_header.length;
+	uint16_t remaining = func(&ENC_USART, rxlen);
 	enc_data_end();
 
-	// packet data is no longer useful, allow chip to overwrite it
-	uint16_t erxrdpt = header->next_packet - 1;
-	enc_cmd_write(ENC_ERXRDPTL, (uint8_t) erxrdpt);
-	enc_cmd_write(ENC_ERXRDPTH, (uint8_t) (erxrdpt >> 8));
+	/*
+	 * Move to the next packet. If the packet length was even, and we sent all
+	 * bytes requested, there is no need to move ERDPT.
+	 */
+	if ((! (rxlen & 1)) && remaining == 0)
+	{
+		net_move_rxpt(net_header.next_packet, 0);
+	}
+	else
+	{
+		net_move_rxpt(net_header.next_packet, 1);
+	}
 
-	// decrement packet counter
-	advance_packet();
+	// no longer have a packet pending
+	NET_STATUS &= ~NETSTAT_PKT_PENDING;
 
 	// then we're done
 	return NET_OK;
@@ -388,7 +378,9 @@ NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t))
 
 NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 {
-	// TODO verify that no packet is waiting for transmission?
+	net_lock();
+
+	// TODO need to verify that no packet is waiting for transmission
 
 	// move TX pointer
 	enc_cmd_write(ENC_EWRPTL, 0x00);
@@ -403,6 +395,7 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 	// instruct network chip to send the packet
 	net_transmit(length + 1);
 
+	net_unlock();
 	return NET_OK;
 }
 
@@ -488,46 +481,31 @@ ISR(NET_DMA_READ_ISR)
 	ENC_USART.DATA = ENC_OP_BFS | ENC_ECON2;
 	ENC_USART.DATA = 0;
 
-	// while that's transmitting, decode the packet pointer and store results
-	uint8_t pkt = (NET_PACKET_PTR + NET_PACKET_SIZE) & NET_HEADERS_MASK;
-	volatile NetHeader* header = &(net_headers[pkt]);
-	// first do the data offset for the current packet
-	// see 7.2.3, though this simplifies by knowing ERXST == 0
-	uint16_t pkt_data = (NET_ERDPTH_NEXT << 8) + NET_ERDPTL_NEXT;
-	pkt_data += 6;
-	if (((pkt_data & 0xFF00) >> 8) > (NET_ERXNDH_VALUE + 1))
-	{
-		pkt_data &= 0xFF;
-	}
-	header->packet_data = pkt_data;
-	// next packet values
-	NET_ERDPTH_NEXT = dma_read_arr[NET_HEAD_RXPTH];
-	NET_ERDPTL_NEXT = dma_read_arr[NET_HEAD_RXPTL];
-	header->next_packet =
+	/*
+	 * While the USART is cooking we can do some work.
+	 */
+
+	// per 5.14.2, flag triggering this ISR is not auto-cleared
+	// we don't use the error flags, so ignore those
+	NET_DMA_READ.CTRLB |= DMA_CH_TRNIF_bm;
+
+	// decode the packet pointer and store
+	net_header.next_packet =
 			(dma_read_arr[NET_HEAD_RXPTH] << 8)
 			+ dma_read_arr[NET_HEAD_RXPTL];
-	// then remaining status values
-	header->length =
+	net_header.length =
 			(dma_read_arr[NET_HEAD_RXLENH] << 8)
 			+ dma_read_arr[NET_HEAD_RXLENL];
-	header->statl = dma_read_arr[NET_HEAD_STATL];
-	header->stath = dma_read_arr[NET_HEAD_STATH];
+	net_header.statl = dma_read_arr[NET_HEAD_STATL];
+	net_header.stath = dma_read_arr[NET_HEAD_STATH];
 
-	// clear received USART bytes (garbage response)
+	// clear received USART bytes (garbage response) and wrap up command
 	while (! (ENC_USART.STATUS & USART_RXCIF_bm));
 	ENC_USART.DATA;
 	while (! (ENC_USART.STATUS & USART_RXCIF_bm));
 	ENC_USART.DATA;
 	ENC_PORT.OUTSET = ENC_PIN_CS;
 
-	// TODO NET_STATUS |= NETSTAT_ERDPT_DIRTY;????
-	// maybe this whole thing isn't such a good idea...
-
-	// increment the packet counter
-	NET_PACKET_SIZE++;
-	// if we still have header storage, re-enable packet reception ISR
-	if (NET_PACKET_SIZE < NET_HEADERS_SIZE - 1)
-	{
-		ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
-	}
+	// flag that we have a packet waiting
+	NET_STATUS |= NETSTAT_PKT_PENDING;
 }

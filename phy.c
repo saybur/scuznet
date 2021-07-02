@@ -472,13 +472,13 @@ uint16_t phy_data_offer_bulk(uint8_t* data, uint16_t len)
 	return len;
 }
 
-void phy_data_offer_stream(USART_t* usart, uint16_t len)
+uint16_t phy_data_offer_stream(USART_t* usart, uint16_t len)
 {
 	uint8_t v;
 
-	if (! (PHY_REGISTER_PHASE & 0x01)) return;
-	if (! phy_is_active()) return;
-	if (len == 0) return;
+	if (! (PHY_REGISTER_PHASE & 0x01)) return len;
+	if (! phy_is_active()) return len;
+	if (len == 0) return len;
 
 	// queue first byte
 	while (! (usart->STATUS & USART_DREIF_bm));
@@ -510,15 +510,17 @@ void phy_data_offer_stream(USART_t* usart, uint16_t len)
 	req_assert();
 	while (! phy_is_ack_asserted());
 	req_release();
+
+	return len;
 }
 
-void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
+uint16_t phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 {
 	uint8_t v;
 
-	if (! (PHY_REGISTER_PHASE & 0x01)) return;
-	if (! phy_is_active()) return;
-	if (len == 0) return;
+	if (! (PHY_REGISTER_PHASE & 0x01)) return len;
+	if (! phy_is_active()) return len;
+	if (len == 0) return len;
 
 	// queue first byte
 	while (! (usart->STATUS & USART_DREIF_bm));
@@ -550,6 +552,8 @@ void phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 	req_assert();
 	while ((! phy_is_atn_asserted()) && (! phy_is_ack_asserted()));
 	req_release();
+
+	return len;
 }
 
 uint8_t phy_data_ask(void)

@@ -23,28 +23,21 @@
 #include <avr/io.h>
 
 /*
- * Defines the return format of information from the header processor
- * function. These are simply copied from the array 
+ * Declares the format of the net_header struct, which is just a copy of the
+ * ENC28J60 packet header. See the datasheet for what individual components
+ * mean.
  * 
- * -> The next packet value is the pointer into the receive buffer
- *    memory where the next packet lives, which is always valid.
- * -> The destination is the least-significant MAC byte, which
- *    indicates the LLAP target. This is zero if the remainder of the
- *    packet should be ignored.
- * -> The length is the *valid length* of the packet, as indicated by
- *    the packet itself (and checked against received data)
- * -> The source is the MAC of the source.
- * 
- * See the header processing code for more details.
+ * It is critical that these values not be modified by client code!
  */
 typedef struct NetHeader_t {
 	uint16_t next_packet;
 	uint16_t length;
 	uint8_t statl;
 	uint8_t stath;
-	uint8_t dest[6];
-	uint16_t packet_data;
 } NetHeader;
+
+// if net_pending() is true, this contains the information about the packet
+extern volatile NetHeader net_header;
 
 /*
  * Options for providing to net_set_filter.
@@ -60,15 +53,20 @@ typedef enum {
  */
 typedef enum {
 	NET_OK = 0,
-	NET_LOCKED,             // Ethernet subsystem locked in other context
-	NET_BUSY,               // device is temporarily unable to accept request
+	NETSTAT_TRUNCATED,      // a call did not transfer all available bytes
 	NET_NO_DATA             // no data are available
 } NETSTAT;
 
 /*
- * Provides the current number of packets in the headers array.
+ * Flags within the NET_STATUS GPIOR
  */
-#define net_size()          NET_PACKET_SIZE
+#define NETSTAT_PKT_PENDING     _BV(1)
+
+/*
+ * If nonzero, there is a network packet pending and the values in net_header
+ * are valid.
+ */
+#define net_pending()       (NET_STATUS & NETSTAT_PKT_PENDING)
 
 /*
  * Initalizes the Ethernet controller by writing appropriate values to its
@@ -80,26 +78,6 @@ typedef enum {
  * address, in LSB to MSB order.
  */
 void net_setup(uint8_t*);
-
-/*
- * These calls manage access for the net subsystem.
- * 
- * Whenever the network chip gets a packet, interrupts handle reading
- * components of the data. When this is happening, client code cannot use the
- * chip. To manage access, whenever a user needs to read or write a packet,
- * net_start() should be called to stop the periodic packet reception code
- * until net_end() is called to release the subsystem.
- * 
- * net_start() will block until the networking subsystem is ready to be used.
- */
-NETSTAT net_start(void);
-NETSTAT net_end(void);
-
-/*
- * Provides the current packet of interest in the given pointer, or NULL if
- * there is none.
- */
-NETSTAT net_get(volatile NetHeader* header);
 
 /*
  * Updates the filtering system to match packets of the given type.
@@ -119,8 +97,15 @@ NETSTAT net_skip(void);
  * pointed to by NET_PACKET_PTR, then call the given function with the number
  * of bytes that should be read from the given USART. Once that returns, this
  * will move the read pointers past the packet.
+ * 
+ * The provided function should return the number of bytes that *were not*
+ * sent through properly: returning zero indicates success.
+ * 
+ * This will return NETSTAT_OK if all bytes were sent, and NETSTAT_TRUNCATED
+ * if not all bytes were sent. The pending packet will be discarded in either
+ * case.
  */ 
-NETSTAT net_stream_read(void (*func)(USART_t*, uint16_t));
+NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t));
 
 /*
  * Performs a write action, streaming data from the given function into the

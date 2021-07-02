@@ -24,6 +24,7 @@
 #include "debug.h"
 #include "link.h"
 #include "logic.h"
+#include "enc.h"
 #include "net.h"
 
 /*
@@ -446,18 +447,12 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 
 static void link_nuvo_read_packet(void)
 {
-	NetHeader* net_header = NULL;
-	if (net_get(net_header))
-	{
-		// TODO ERROR HANDLE
-	}
-
 	/*
 	 * Construct the flag byte and packet counter in the buffer at the correct
 	 * position for sending over the PHY. Length is already in position 2 and 3
 	 * from the ENC read.
 	 */
-	if ((net_header->stath) & 3)
+	if ((net_header.stath) & 3)
 	{
 		// broadcast/multicast set
 		read_buffer[0] = 0x21;
@@ -467,8 +462,8 @@ static void link_nuvo_read_packet(void)
 		read_buffer[0] = 0x01;
 	}
 	read_buffer[1] = rx_packet_id++;
-	read_buffer[2] = (uint8_t) (net_header->length);
-	read_buffer[3] = (uint8_t) ((net_header->length) >> 8);
+	read_buffer[2] = (uint8_t) (net_header.length);
+	read_buffer[3] = (uint8_t) ((net_header.length) >> 8);
 
 	phy_phase(PHY_PHASE_DATA_IN);
 	phy_data_offer_bulk(read_buffer, 4);
@@ -550,7 +545,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		return;
 	}
 
-	if (net_size() == 0)
+	if (! net_pending())
 	{
 		// send "No Packets" message
 		debug(DEBUG_LINK_RX_NO_DATA);
@@ -564,20 +559,14 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	{
 		debug(DEBUG_LINK_RX_STARTING);
 
-		NetHeader* net_header = NULL;
-		if (net_get(net_header))
-		{
-			// TODO ERROR HANDLE
-		}
-
 		/*
 		 * Move the length bytes into the correct position. The length
 		 * bytes for both Daynaport and Nuvolink seem to be the same -
 		 * length of the payload excluding length and flag bytes, except
 		 * little endian vs big endian.
 		 */
-		read_buffer[0] = (uint8_t) ((net_header->length) >> 8);
-		read_buffer[1] = (uint8_t) (net_header->length);
+		read_buffer[0] = (uint8_t) ((net_header.length) >> 8);
+		read_buffer[1] = (uint8_t) (net_header.length);
 		read_buffer[2] = 0x00;
 		read_buffer[3] = 0x00;
 		read_buffer[4] = 0x00;
@@ -589,7 +578,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		 * Presumably this means the driver doesn't just wait for it's
 		 * polling interval to elapse before asking for another packet.
 		 */
-		if (net_size() > 1)
+		if (enc_is_int_asserted())
 		{
 			read_buffer[5] = 0x10;
 		}
@@ -678,7 +667,7 @@ void link_check_rx(void)
 		return;
 	}
 
-	if (ENC_PORT_EXT.IN & ENC_PIN_INT)
+	if (net_pending())
 	{
 		if (last_identify & 0x40)
 		{
@@ -721,6 +710,11 @@ uint8_t link_main(void)
 		//_delay_us(65);
 		logic_message_out();
 
+
+		// TODO: the following loop poorly handles the delay between net_end()
+		// and detecting the next packet in the queue!
+
+
 		/*
 		 * Then we loop, sending packets to the initiator. This will continue
 		 * as long as we have packets to send (or transmit), until we get
@@ -728,7 +722,7 @@ uint8_t link_main(void)
 		 * disconnect ourselves.
 		 */
 		uint16_t txreq = 0;
-		while (phy_is_active() && ((ENC_PORT_EXT.IN & ENC_PIN_INT) || txreq))
+		while (phy_is_active() && (net_pending() || txreq))
 		{
 			if (txreq)
 			{

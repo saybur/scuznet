@@ -122,15 +122,10 @@ void enc_init(void)
 	 */
 	ENC_RX_PINCTRL |= PORT_OPC_PULLUP_gc;
 	/*
-	 * Invert the read state of the /INT pin to make the logic that checks it
-	 * a little simpler to implement. To manually check, perform the following:
-	 * 
-	 * if (ENC_PORT_EXT.IN & ENC_PIN_INT) { };
-	 * 
-	 * This also causes the rising edge to be the assertion side for
-	 * interrupts. Set it up for INT0.
+	 * Set it up for INT0, with the interrupt triggering as long as the pin
+	 * is held low.
 	 */
-	ENC_INT_PINCTRL |= PORT_INVEN_bm | PORT_ISC_RISING_gc;
+	ENC_INT_PINCTRL |= PORT_ISC_LEVEL_gc;
 	ENC_PORT_EXT.INT0MASK = ENC_PIN_INT;
 
 	// wait before we do anything with the reset line
