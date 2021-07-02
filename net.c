@@ -479,7 +479,7 @@ ISR(NET_DMA_READ_ISR)
 	 */
 	ENC_PORT.OUTCLR = ENC_PIN_CS;
 	ENC_USART.DATA = ENC_OP_BFS | ENC_ECON2;
-	ENC_USART.DATA = 0;
+	ENC_USART.DATA = ENC_PKTDEC_bm;
 
 	/*
 	 * While the USART is cooking we can do some work.
