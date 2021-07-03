@@ -84,6 +84,7 @@ int main(void)
 	enc_init();
 	init_mem();
 	init_isr();
+	debug(DEBUG_MAIN_RESET);
 
 	// fail here if there was a brown-out, so we can easily tell if the
 	// PSU is having problems

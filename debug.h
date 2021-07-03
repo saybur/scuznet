@@ -31,6 +31,7 @@
  * for each symbol.
  */
 #define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10 // 1
+#define DEBUG_MAIN_RESET                          0x1F // 0
 #define DEBUG_LOGIC_BAD_LUN                       0x50 // 0
 #define DEBUG_LOGIC_BAD_CMD                       0x52 // 1
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53 // 0
