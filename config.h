@@ -38,9 +38,9 @@
 
 typedef enum {
 	CONFIG_OK = 0,
-	CONFIG_NOFILE,      // unable to locate the 'scuznet.ini' file
-	CONFIG_NOLOAD,      // unable to load the 'scuznet.ini' file
-	CONFIG_HDDERR       // issue during the hard drive volume setup
+	CONFIG_NOFILE = 1, // unable to locate the 'scuznet.ini' file
+	CONFIG_NOLOAD = 2, // unable to load the 'scuznet.ini' file
+	CONFIG_HDDERR = 3  // issue during the hard drive volume setup
 } CONFIG_RESULT;
 
 /*
@@ -68,6 +68,8 @@ typedef enum {
 
 /*
  * The number of virtual hard drives that can be supported simultaneously.
+ * 
+ * This will break the debug-flash system if increased beyond 4.
  */
 #define HARD_DRIVE_COUNT        4
 

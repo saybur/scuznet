@@ -47,6 +47,9 @@
  * WRITE(10)            (0x2A)
  */
 
+/*
+ * Possible return types for hdd_state().
+ */
 typedef enum {
 	HDD_OK = 0,
 	HDD_NOINIT,
@@ -54,12 +57,14 @@ typedef enum {
 } HDDSTATE;
 
 /*
- * Called when the memory card has been mounted and is ready to go. This
- * will read the configuration information and set itself up appropriately.
+ * Called when the files on the memory card have been mounted and are ready for
+ * use.
  * 
- * Returns true when successful, false otherwise.
+ * This will return 0 on success. If non-zero, the hard drive image number that
+ * caused the failure will be in the upper eight bits, and the specific error
+ * will be in the lower eight bits.
  */
-uint8_t hdd_init(void);
+uint16_t hdd_init(void);
 
 /*
  * Provides the current state of the hard drive subsystem.

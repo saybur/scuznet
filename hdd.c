@@ -874,14 +874,16 @@ static void hdd_cmd_seek()
  * ============================================================================
  */
 
-uint8_t hdd_init(void)
+uint16_t hdd_init(void)
 {
 	FRESULT res;
 	FILINFO fno;
 	FIL* fp;
+	uint16_t err;
 
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
+		err = (i + 1) << 8;
 		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
 		{
 			fp = &(config_hdd[i].fp);
@@ -907,40 +909,34 @@ uint8_t hdd_init(void)
 							FA_CREATE_NEW | FA_WRITE);
 					if (res)
 					{
-						debug_dual(DEBUG_HDD_OPEN_FAILED, res);
-						return 0;
+						err += (uint8_t) res;
+						return err;
 					}
 					// allocate the space
 					res = f_expand(fp, config_hdd[i].size, 1);
 					if (res)
 					{
-						debug_dual(DEBUG_HDD_ALLOCATE_FAILED, res);
-						return 0;
+						err += (uint8_t) res;
+						return err;
 					}
 					// close the file, we'll be re-opening it later in
 					// the normal modes
 					f_close(fp);
 					if (res)
 					{
-						debug_dual(DEBUG_HDD_CLOSE_FAILED, res);
-						return 0;
+						err += (uint8_t) res;
+						return err;
 					}
 				}
 			}
 			else if (res == FR_OK)
 			{
-				// verify the file is the correct type to work with
-				if ((fno.fattrib & AM_DIR) || (fno.fattrib & AM_RDO))
-				{
-					debug_dual(DEBUG_HDD_INVALID_FILE, fno.fattrib);
-					return 0;
-				}
+				// allow to flow through
 			}
 			else
 			{
-				// other error, can't open this file
-				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
-				return 0;
+				err += (uint8_t) res;
+				return err;
 			}
 
 			/*
@@ -949,14 +945,14 @@ uint8_t hdd_init(void)
 			res = f_open(fp, config_hdd[i].filename, FA_READ | FA_WRITE);
 			if (res)
 			{
-				debug_dual(DEBUG_HDD_OPEN_FAILED, res);
-				return 0;
+				err += (uint8_t) res;
+				return err;
 			}
 			config_hdd[i].size = (f_size(fp) >> 9); // store in 512 byte sectors
 			if (config_hdd[i].size == 0)
 			{
-				debug(DEBUG_HDD_FILE_SIZE_FAILED);
-				return 0;
+				err += (uint8_t) FR_INVALID_OBJECT;
+				return err;
 			}
 
 			/*
@@ -976,8 +972,8 @@ uint8_t hdd_init(void)
 				res = f_contiguous(fp, &contiguous);
 				if (res)
 				{
-					debug_dual(DEBUG_HDD_SEEK_ERROR, res);
-					return 0;
+					err += (uint8_t) res;
+					return err;
 				}
 			}
 			if (contiguous)
@@ -995,8 +991,9 @@ uint8_t hdd_init(void)
 	uint32_t card_size;
 	if (disk_ioctl(0, GET_SECTOR_COUNT, &card_size))
 	{
-		debug(DEBUG_HDD_IOCTRL_ERROR);
-		return 0;
+		// FIXME
+		err = 0xFFFF;
+		return err;
 	}
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
@@ -1005,14 +1002,15 @@ uint8_t hdd_init(void)
 			uint32_t end = config_hdd[i].start + config_hdd[i].size;
 			if(end > card_size)
 			{
-				debug_dual(DEBUG_HDD_NATIVE_VOLUME_SIZE_ERROR, i);
-				return 0;
+				// FIXME
+				err = 0xFFFF;
+				return err;
 			}
 		}
 	}
 
 	state = HDD_OK;
-	return 1;
+	return 0;
 }
 
 HDDSTATE hdd_state(void)

@@ -99,6 +99,13 @@
 #define DEBUG_MEM_READ_MUL_FUNC_ERR               0xE4
 #define DEBUG_MEM_READ_MUL_DMA_ERR                0xE5
 
+/*
+ * Fatal error codes. Codes 1-4 are reserved for the hard drive devices.
+ */
+#define FATAL_CONFIG_FILE                         5
+#define FATAL_BROWNOUT                            6
+#define FATAL_MEM_MOUNT_FAILED                    7
+
 // LED control macros
 #define led_on()              LED_PORT.DIR |= LED_PIN;
 #define led_off()             LED_PORT.DIR &= ~LED_PIN;
@@ -140,5 +147,14 @@ static inline __attribute__((always_inline)) void debug(
 	// do nothing
 }
 #endif
+
+/*
+ * Called to halt processing when a fatal condition is detected.
+ * 
+ * When invoked, this will disable interrupts and enter an infinite loop.
+ * During the loop, this will show a series of long flashes followed by a
+ * series of short flashes, per the given parameters.
+ */
+void fatal(uint8_t lflash, uint8_t sflash);
 
 #endif /* DEBUG_H */

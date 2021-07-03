@@ -91,26 +91,14 @@ int main(void)
 	RST.STATUS = 0xFF; // clear all flags for next reboot (?)
 	if (rst_stat & RST_BORF_bm)
 	{
-		while (1)
-		{
-			led_on();
-			_delay_ms(500);
-			led_off();
-			_delay_ms(500);
-		}
+		fatal(FATAL_BROWNOUT, 0);
 	}
 
 	// mount the memory card
 	uint8_t res = f_mount(&fs, "", 0);
 	if (res)
 	{
-		while (1)
-		{
-			led_on();
-			_delay_ms(1000);
-			led_off();
-			_delay_ms(1000);
-		}
+		fatal(FATAL_MEM_MOUNT_FAILED, res);
 	}
 
 	// attempt to read the main configuration file off the card
@@ -118,13 +106,7 @@ int main(void)
 	CONFIG_RESULT cres = config_read(&target_masks);
 	if (cres)
 	{
-		while (1)
-		{
-			led_on();
-			_delay_ms(100);
-			led_off();
-			_delay_ms(100);
-		}
+		fatal(FATAL_CONFIG_FILE, (uint8_t) cres);
 	}
 
 	// complete setup
@@ -135,15 +117,10 @@ int main(void)
 		net_setup(config_enet.mac);
 		link_init();
 	}
-	if (! hdd_init())
+	uint16_t hdd_init_res = hdd_init();
+	if (hdd_init_res)
 	{
-		while (1)
-		{
-			led_on();
-			_delay_ms(250);
-			led_off();
-			_delay_ms(250);
-		}
+		fatal(hdd_init_res >> 8, hdd_init_res);
 	}
 	phy_init_hold();
 	
