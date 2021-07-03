@@ -75,6 +75,23 @@ static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
 #define NET_DMA_STARTCMD        0x84 // the above masks, plus ENABLE
 
 /*
+ * This (re-)enables the /E_INT interrupt routine. That ISR is auto-disabled at
+ * the start of each packet reception event. This should only be used when
+ * the packet header buffer is empty.
+ * 
+ * This will clear the ISR flag before enabling the interrupt to avoid
+ * spurrious triggers. /E_INT is level triggered when active, so the flag will
+ * immediately become set again if /E_INT is still being driven.
+ * 
+ * For more details, see the ISR definition.
+ */
+static inline __attribute__((always_inline)) void net_enable_isr(void)
+{
+	ENC_PORT_EXT.INTFLAGS = PORT_INT0IF_bm;
+	ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+}
+
+/*
  * Used by net.h calls that may be invoked when the /E_INT interrupt is live,
  * and thus will be vulnerable to having their communications trashed. This
  * turns off that interrupt and waits for a pending DMA transaction to end.
@@ -103,15 +120,9 @@ static void net_lock(void)
  */
 static void net_unlock(void)
 {
-	/*
-	 * If there isn't a packet in storage, re-enable /E_INT packet reception.
-	 * Due to the level trigger, if /E_INT is still driven the flag clear will
-	 * be immediately reset, which is the intended behavior.
-	 */
 	if (! net_pending())
 	{
-		ENC_PORT_EXT.INTFLAGS = PORT_INT0IF_bm; // clear flag
-		ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+		net_enable_isr();
 	}
 }
 
@@ -300,7 +311,7 @@ void net_setup(uint8_t* mac)
 	 * Enable interrupts when /E_INT is asserted (pin was set up earlier
 	 * in enc.c).
 	 */
-	ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+	net_enable_isr();
 }
 
 NETSTAT net_set_filter(NETFILTER ftype)
@@ -343,6 +354,7 @@ NETSTAT net_skip(void)
 
 	net_move_rxpt(net_header.next_packet, 1);
 	NET_FLAGS &= ~NETFLAG_PKT_PENDING;
+	net_enable_isr();
 	return NET_OK;
 }
 
@@ -374,6 +386,7 @@ NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t))
 
 	// no longer have a packet pending
 	NET_FLAGS &= ~NETFLAG_PKT_PENDING;
+	net_enable_isr();
 
 	// report result of operation
 	if (remaining)
