@@ -84,6 +84,7 @@
 #define DEBUG_LINK_RX_PACKET_DROPPED              0xB5
 #define DEBUG_LINK_RX_PACKET_DONE                 0xB6
 #define DEBUG_LINK_RX_PACKET_DONE_MORE_WAITING    0xB7
+#define DEBUG_LINK_RX_PACKET_TRUNCATED            0xB8
 #define DEBUG_LINK_RX_ENDING                      0xBF
 #define DEBUG_PHY_RESELECT_REQUESTED              0xD0
 #define DEBUG_PHY_RESELECT_STARTING               0xD1

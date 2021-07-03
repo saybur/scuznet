@@ -60,13 +60,14 @@ typedef enum {
 /*
  * Flags within the NET_STATUS GPIOR
  */
-#define NETSTAT_PKT_PENDING     _BV(1)
+#define NETFLAG_PKT_PENDING     _BV(1)
+#define NETFLAG_TXBUF           _BV(2)
 
 /*
  * If nonzero, there is a network packet pending and the values in net_header
  * are valid.
  */
-#define net_pending()       (NET_STATUS & NETSTAT_PKT_PENDING)
+#define net_pending()       (NET_FLAGS & NETFLAG_PKT_PENDING)
 
 /*
  * Initalizes the Ethernet controller by writing appropriate values to its

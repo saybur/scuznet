@@ -173,7 +173,7 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 /*
  * Used to manage state within the networking code.
  */
-#define NET_STATUS              GPIO5
+#define NET_FLAGS               GPIO5
 
 /*
  * Used by the networking ISR to stash register values.

@@ -19,6 +19,7 @@
 
 #include <stdlib.h>
 #include <avr/interrupt.h>
+#include <avr/cpufunc.h>
 #include <util/atomic.h>
 #include <util/delay.h>
 #include "config.h"
@@ -30,14 +31,16 @@
  * is, starting at 0x0000 and extending through 0xXXFF, where 0xXX is this
  * value. All remaining space is allocated to the transmit buffer.
  */
-#define NET_ERXNDH_VALUE        0x19
+#define NET_ERXNDH_VALUE        0x13
 
 /*
- * Defines the starting point where packets to be transmitted are stored,
- * starting at 0xXX00 and extending through 0x1FFF, where 0xXX is this
- * value.
+ * Defines the starting point where packets to be transmitted are stored.
+ * There are two regions, each 1536 bytes in size reserved for this purpose.
+ * They can be switched between in the transmit functions based on the provided
+ * buffer selection value.
  */
-#define ENC_XMIT_STARTH         (NET_ERXNDH_VALUE + 1)
+#define NET_XMIT_BUF1           0x14
+#define NET_XMIT_BUF2           0x1A
 
 /*
  * Header for the received packet.
@@ -69,7 +72,7 @@ static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
 
 // the fixed CTRLA register contents used to start the DMA units
 #define NET_DMA_CTRLA           (DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
-#define NET_DMA_STARTCMD        0x82 // the above masks, plus ENABLE
+#define NET_DMA_STARTCMD        0x84 // the above masks, plus ENABLE
 
 /*
  * Used by net.h calls that may be invoked when the /E_INT interrupt is live,
@@ -139,7 +142,7 @@ static void net_move_rxpt(uint16_t next, uint8_t move_erdpt)
 /*
  * This mostly follows the steps in 7.1, amended by errata 12.
  */
-static void net_transmit(uint16_t length)
+static void net_transmit(uint8_t txh, uint16_t length)
 {
 	// per errata, reset TX subsystem to prevent possible stalled transmissions
 	enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
@@ -148,8 +151,8 @@ static void net_transmit(uint16_t length)
 
 	// program ETXST and ETXND
 	enc_cmd_write(ENC_ETXSTL, 0x00);
-	enc_cmd_write(ENC_ETXSTH, ENC_XMIT_STARTH);
-	uint16_t end = (ENC_XMIT_STARTH << 8) + length - 1;
+	enc_cmd_write(ENC_ETXSTH, txh);
+	uint16_t end = (txh << 8) + length - 1;
 	enc_cmd_write(ENC_ETXNDL, (uint8_t) end);
 	enc_cmd_write(ENC_ETXNDH, (uint8_t) (end >> 8));
 
@@ -339,7 +342,7 @@ NETSTAT net_skip(void)
 	}
 
 	net_move_rxpt(net_header.next_packet, 1);
-	NET_STATUS &= ~NETSTAT_PKT_PENDING;
+	NET_FLAGS &= ~NETFLAG_PKT_PENDING;
 	return NET_OK;
 }
 
@@ -370,21 +373,28 @@ NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t))
 	}
 
 	// no longer have a packet pending
-	NET_STATUS &= ~NETSTAT_PKT_PENDING;
+	NET_FLAGS &= ~NETFLAG_PKT_PENDING;
 
-	// then we're done
-	return NET_OK;
+	// report result of operation
+	if (remaining)
+	{
+		return NETSTAT_TRUNCATED;
+	}
+	else
+	{
+		return NET_OK;
+	}
 }
 
 NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 {
 	net_lock();
 
-	// TODO need to verify that no packet is waiting for transmission
-
 	// move TX pointer
+	uint8_t txsel = (NET_FLAGS & NETFLAG_TXBUF);
+	uint8_t txh = txsel ? NET_XMIT_BUF1 : NET_XMIT_BUF2;
 	enc_cmd_write(ENC_EWRPTL, 0x00);
-	enc_cmd_write(ENC_EWRPTH, ENC_XMIT_STARTH);
+	enc_cmd_write(ENC_EWRPTH, txh);
 	// setup write
 	enc_write_start();
 	// write the status byte
@@ -393,7 +403,10 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 	func(&ENC_USART, length);
 	enc_data_end();
 	// instruct network chip to send the packet
-	net_transmit(length + 1);
+	// TODO need to verify that no packet is waiting for transmission
+	net_transmit(txh, length + 1);
+	// swap buffers for the next time
+	txsel ? (NET_FLAGS &= ~NETFLAG_TXBUF) : (NET_FLAGS |= NETFLAG_TXBUF);
 
 	net_unlock();
 	return NET_OK;
@@ -469,9 +482,18 @@ ISR(ENC_INT_ISR, ISR_NAKED)
 /*
  * Invoked when the read DMA unit completes a transaction, meaning the array
  * has a packet header needing to be parsed.
+ * 
+ * TODO: this isn't terribly efficient with the memory copying between the
+ * array and the struct; this might be better to just do with the array.
  */
 ISR(NET_DMA_READ_ISR)
 {
+	// drive /CS high from the ongoing read that just finished, and wait at
+	// least 50ns before driving it low again for the next operation.
+	ENC_PORT.OUTSET = ENC_PIN_CS;
+	_NOP();
+	_NOP();
+
 	/*
 	 * Decrement PKTDEC in ECON2. Done directly in ISR to bypass the call
 	 * overhead to the enc.c library, as well as the irrelevant bank switch
@@ -507,5 +529,5 @@ ISR(NET_DMA_READ_ISR)
 	ENC_PORT.OUTSET = ENC_PIN_CS;
 
 	// flag that we have a packet waiting
-	NET_STATUS |= NETSTAT_PKT_PENDING;
+	NET_FLAGS |= NETFLAG_PKT_PENDING;
 }

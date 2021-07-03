@@ -447,11 +447,6 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 
 static void link_nuvo_read_packet(void)
 {
-	/*
-	 * Construct the flag byte and packet counter in the buffer at the correct
-	 * position for sending over the PHY. Length is already in position 2 and 3
-	 * from the ENC read.
-	 */
 	if ((net_header.stath) & 3)
 	{
 		// broadcast/multicast set
@@ -465,9 +460,17 @@ static void link_nuvo_read_packet(void)
 	read_buffer[2] = (uint8_t) (net_header.length);
 	read_buffer[3] = (uint8_t) ((net_header.length) >> 8);
 
+	debug(0xFF);
+	debug_dual((net_header.length) >> 8, net_header.length);
+
 	phy_phase(PHY_PHASE_DATA_IN);
 	phy_data_offer_bulk(read_buffer, 4);
-	net_stream_read(phy_data_offer_stream_atn);
+	NETSTAT res = net_stream_read(phy_data_offer_stream_atn);
+	if (res)
+	{
+		debug_dual(DEBUG_LINK_RX_PACKET_TRUNCATED, res);
+		// as of now, do not treat this as an error
+	}
 }
 
 static uint16_t link_nuvo_message_out_post_rx(void)
