@@ -69,6 +69,8 @@
 #define DEBUG_LINK_RX_PACKET_DONE                 0xB6 // 0
 #define DEBUG_LINK_RX_PACKET_TRUNCATED            0xB8 // 1
 #define DEBUG_LINK_RX_ENDING                      0xBF // 0
+#define DEBUG_NET_TX_CLEARED                      0xC0 // 0
+#define DEBUG_NET_TX_REPEATED                     0xC1 // 0
 #define DEBUG_PHY_RESELECT_REQUESTED              0xD0 // 0
 #define DEBUG_PHY_RESELECT_STARTING               0xD1 // 0
 #define DEBUG_PHY_RESELECT_ARB_LOST               0xD2 // 0

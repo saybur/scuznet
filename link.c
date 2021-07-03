@@ -136,6 +136,7 @@ static void link_send_packet(uint16_t length)
 
 	phy_phase(PHY_PHASE_DATA_OUT);
 	net_stream_write(phy_data_ask_stream, length);
+	net_transmit(length);
 }
 
 /*

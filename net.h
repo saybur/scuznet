@@ -52,16 +52,21 @@ typedef enum {
  * Return values for the functions.
  */
 typedef enum {
-	NET_OK = 0,
+	NETSTAT_OK = 0,
 	NETSTAT_TRUNCATED,      // a call did not transfer all available bytes
-	NET_NO_DATA             // no data are available
+	NETSTAT_NO_DATA         // no data are available
 } NETSTAT;
 
 /*
  * Flags within the NET_STATUS GPIOR
+ * 
+ * NETFLAG_PKT_PENDING: set if there is a pending packet to be read
+ * NETFLAG_TXBUF: switched back and forth to support TX double-buffering
+ * NETFLAG_TXUSED: set once the first packet has been sent
  */
 #define NETFLAG_PKT_PENDING     _BV(1)
 #define NETFLAG_TXBUF           _BV(2)
+#define NETFLAG_TXUSED          _BV(3)
 
 /*
  * If nonzero, there is a network packet pending and the values in net_header
@@ -109,20 +114,20 @@ NETSTAT net_skip(void);
 NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t));
 
 /*
- * Performs a write action, streaming data from the given function into the
- * Ethernet controller.
+ * Performs a buffer write, streaming data from the given function into the
+ * Ethernet controller's free buffer. This does not actually transmit a packet:
+ * for that, see net_transmit().
  * 
  * When invoked, this will begin a write operation, write the status byte,
  * then call the provided function with the given number of bytes that need
- * to be provided into the ENC28J60 USART. Once that function returns, the
- * packet will be finalized and queued for transmission.
+ * to be provided into the ENC28J60 USART.
  */
 NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length);
 
 /*
- * Checks if the device is ready to accept a packet of the given size. This
- * will provide NET_OK if ready, and NET_BUSY if not.
+ * Transmits the packet in the current free buffer. Should be provided with the
+ * length of the data to transmit.
  */
-NETSTAT net_write_ready(uint16_t size);
+NETSTAT net_transmit(uint16_t length);
 
 #endif /* NET_H */

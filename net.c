@@ -23,6 +23,7 @@
 #include <util/atomic.h>
 #include <util/delay.h>
 #include "config.h"
+#include "debug.h"
 #include "enc.h"
 #include "net.h"
 
@@ -148,29 +149,6 @@ static void net_move_rxpt(uint16_t next, uint8_t move_erdpt)
 		enc_cmd_write(ENC_ERXRDPTL, (uint8_t) next);
 		enc_cmd_write(ENC_ERXRDPTH, (uint8_t) (next >> 8));
 	}
-}
-
-/*
- * This mostly follows the steps in 7.1, amended by errata 12.
- */
-static void net_transmit(uint8_t txh, uint16_t length)
-{
-	// per errata, reset TX subsystem to prevent possible stalled transmissions
-	enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
-	enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
-	enc_cmd_clear(ENC_EIR, ENC_TXERIF_bm);
-
-	// program ETXST and ETXND
-	enc_cmd_write(ENC_ETXSTL, 0x00);
-	enc_cmd_write(ENC_ETXSTH, txh);
-	uint16_t end = (txh << 8) + length - 1;
-	enc_cmd_write(ENC_ETXNDL, (uint8_t) end);
-	enc_cmd_write(ENC_ETXNDH, (uint8_t) (end >> 8));
-
-	// clear EIR.TXIF and set EIE.TXIE and EIE.INTIE, which we do not do
-
-	// set ECON1.TXRTS, which starts transmission
-	enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
 }
 
 /*
@@ -342,27 +320,27 @@ NETSTAT net_set_filter(NETFILTER ftype)
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 
 	net_unlock();
-	return NET_OK;
+	return NETSTAT_OK;
 }
 
 NETSTAT net_skip(void)
 {
 	if (! net_pending())
 	{
-		return NET_NO_DATA;
+		return NETSTAT_NO_DATA;
 	}
 
 	net_move_rxpt(net_header.next_packet, 1);
 	NET_FLAGS &= ~NETFLAG_PKT_PENDING;
 	net_enable_isr();
-	return NET_OK;
+	return NETSTAT_OK;
 }
 
 NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t))
 {
 	if (! net_pending())
 	{
-		return NET_NO_DATA;
+		return NETSTAT_NO_DATA;
 	}
 
 	// ERDPT is already at the start of packet data, just start reading
@@ -395,7 +373,7 @@ NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t))
 	}
 	else
 	{
-		return NET_OK;
+		return NETSTAT_OK;
 	}
 }
 
@@ -403,7 +381,7 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 {
 	net_lock();
 
-	// move TX pointer
+	// shift the write pointer to the free buffer
 	uint8_t txsel = (NET_FLAGS & NETFLAG_TXBUF);
 	uint8_t txh = txsel ? NET_XMIT_BUF1 : NET_XMIT_BUF2;
 	enc_cmd_write(ENC_EWRPTL, 0x00);
@@ -415,14 +393,106 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 	// transfer raw data
 	func(&ENC_USART, length);
 	enc_data_end();
-	// instruct network chip to send the packet
-	// TODO need to verify that no packet is waiting for transmission
-	net_transmit(txh, length + 1);
-	// swap buffers for the next time
+
+	// done
+	net_unlock();
+	return NETSTAT_OK;
+}
+
+/*
+ * This mostly follows the steps in 7.1, amended by errata 12.
+ */
+NETSTAT net_transmit(uint16_t length)
+{
+	uint8_t rd;
+	net_lock();
+
+	/*
+	 * Ensure the previous transmission completed. Per errata 13, when we are
+	 * operating in half-duplex mode there are false/late collision issues that
+	 * need to be worked around. We attempt to retransmit several times when
+	 * this happens.
+	 */
+	if (NET_FLAGS & NETFLAG_TXUSED)
+	{
+		uint8_t repcnt = 16;
+		uint16_t countdown = 0x1000;
+		do
+		{
+			// wait until one of EIR.TXIF and EIR.TXERIF clear
+			do
+			{
+				enc_cmd_read(ENC_EIR, &rd);
+			}
+			while (! ((rd & ENC_TXIF_bm)
+					|| (rd & ENC_TXERIF_bm)
+					|| (--countdown) == 0));
+			// clear pending transmit request
+			enc_cmd_clear(ENC_ECON1, ENC_TXRTS_bm);
+			// if we had to wait until the countdown we consider it a failure
+			if (countdown == 0)
+			{
+				rd |= ENC_TXERIF_bm;
+			}
+
+			// was the packet transmitted successfully?
+			if (rd & ENC_TXERIF_bm)
+			{
+				debug(DEBUG_NET_TX_REPEATED);
+				// reset TX subsystem
+				enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
+				enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
+				enc_cmd_clear(ENC_EIR, ENC_TXIF_bm | ENC_TXERIF_bm);
+				// pointers are still good from before, just enqueue
+				enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
+				// we wait longer this time
+				countdown = 0xFFFF;
+			}
+			else
+			{
+				// last packet OK, moving on to the current one
+				break;
+			}
+		}
+		while (--repcnt);
+	}
+	else
+	{
+		NET_FLAGS |= NETFLAG_TXUSED;
+	}
+	debug(DEBUG_NET_TX_CLEARED);
+
+	// verify we're pointing to the free buffer
+	uint8_t txsel = (NET_FLAGS & NETFLAG_TXBUF);
+	uint8_t txh = txsel ? NET_XMIT_BUF1 : NET_XMIT_BUF2;
+
+	// per errata, reset TX subsystem to prevent possible stalled transmissions
+	enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
+	enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
+	enc_cmd_clear(ENC_EIR, ENC_TXIF_bm | ENC_TXERIF_bm);
+
+	/*
+	 * Program ETXST and ETXND for the correct data buffer.
+	 * 
+	 * The given length is the total length of the packet. With the extra
+	 * status byte on the front of the buffer, this is OK to use as the
+	 * addition for the ending pointer.
+	 */
+	enc_cmd_write(ENC_ETXSTL, 0x00);
+	enc_cmd_write(ENC_ETXSTH, txh);
+	uint16_t end = (txh << 8) + length;
+	enc_cmd_write(ENC_ETXNDL, (uint8_t) end);
+	enc_cmd_write(ENC_ETXNDH, (uint8_t) (end >> 8));
+
+	// set ECON1.TXRTS, which starts transmission
+	enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
+
+	// reset the information for next time
 	txsel ? (NET_FLAGS &= ~NETFLAG_TXBUF) : (NET_FLAGS |= NETFLAG_TXBUF);
 
+	// done
 	net_unlock();
-	return NET_OK;
+	return NETSTAT_OK;
 }
 
 /*
