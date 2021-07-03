@@ -55,7 +55,7 @@
 #define data_not_ready()    (! (MEM_USART.STATUS & USART_RXCIF_bm))
 #define dma_not_ready()     (! (MEM_DMA_READ.CTRLB & (DMA_CH_ERRIF_bm | DMA_CH_TRNIF_bm)))
 
-#define mem_timed_out()	    (MEM_TIMER.INTFLAGS & TC0_OVFIF_bm)
+#define mem_timed_out()	    (MEM_TIMER.INTFLAGS & MEM_TIMER_OVF)
 
 #define CMD0                (0)	      // GO_IDLE_STATE
 #define CMD1                (1)       // SEND_OP_COND (MMC)
