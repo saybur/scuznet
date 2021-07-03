@@ -27,11 +27,8 @@
  * printf() of the embedded world. I should really get a proper debugging
  * rig at some point...
  */
-#define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10
+#define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10 // 1
 #define DEBUG_CONFIG_FILE_MISSING                 0x11
-#define DEBUG_CONFIG_LOAD_FAILED                  0x12
-#define DEBUG_CONFIG_READ_ERROR                   0x13
-#define DEBUG_CONFIG_MEMORY_ERROR                 0x14
 #define DEBUG_LOGIC_BAD_LUN                       0x50
 #define DEBUG_LOGIC_BAD_CMD                       0x52
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
@@ -47,29 +44,13 @@
 #define DEBUG_HDD_READ_OKAY                       0x81
 #define DEBUG_HDD_WRITE_STARTING                  0x82
 #define DEBUG_HDD_WRITE_OKAY                      0x83
-#define DEBUG_HDD_READ_SINGLE                     0x86
-#define DEBUG_HDD_READ_MULTIPLE                   0x87
-#define DEBUG_HDD_WRITE_SINGLE                    0x88
-#define DEBUG_HDD_WRITE_MULTIPLE                  0x89
-#define DEBUG_HDD_PACKET_START                    0x8A
-#define DEBUG_HDD_PACKET_END                      0x8B
 #define DEBUG_HDD_SEEK                            0x8C
 #define DEBUG_HDD_NOT_READY                       0x90
 #define DEBUG_HDD_MEM_SEEK_ERROR                  0x91
 #define DEBUG_HDD_MEM_READ_ERROR                  0x92
 #define DEBUG_HDD_MEM_WRITE_ERROR                 0x93
 #define DEBUG_HDD_INVALID_OPERATION               0x94
-#define DEBUG_HDD_OPEN_FAILED                     0x95
-#define DEBUG_HDD_FILE_SIZE_FAILED                0x96
-#define DEBUG_HDD_FOPEN_FAILED                    0x97
-#define DEBUG_HDD_INVALID_FILE                    0x98
-#define DEBUG_HDD_SIZE_EXCEEDED                   0x99
-#define DEBUG_HDD_IOCTRL_ERROR                    0x9A
-#define DEBUG_HDD_NATIVE_VOLUME_SIZE_ERROR        0x9B
-#define DEBUG_HDD_SEEK_ERROR                      0x9C
-#define DEBUG_HDD_ALLOCATE_FAILED                 0x9D
-#define DEBUG_HDD_CLOSE_FAILED                    0x9E
-#define DEBUG_HDD_ASSERT_FAILED                   0x9F
+#define DEBUG_HDD_SIZE_EXCEEDED                   0x95
 #define DEBUG_LINK_TX_REQUESTED                   0xA0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5
@@ -81,9 +62,7 @@
 #define DEBUG_LINK_RX_NO_DATA                     0xB2
 #define DEBUG_LINK_RX_STARTING                    0xB3
 #define DEBUG_LINK_RX_PACKET_START                0xB4
-#define DEBUG_LINK_RX_PACKET_DROPPED              0xB5
 #define DEBUG_LINK_RX_PACKET_DONE                 0xB6
-#define DEBUG_LINK_RX_PACKET_DONE_MORE_WAITING    0xB7
 #define DEBUG_LINK_RX_PACKET_TRUNCATED            0xB8
 #define DEBUG_LINK_RX_ENDING                      0xBF
 #define DEBUG_PHY_RESELECT_REQUESTED              0xD0
@@ -98,6 +77,8 @@
 #define DEBUG_MEM_READ_MUL_TIMEOUT                0xE3
 #define DEBUG_MEM_READ_MUL_FUNC_ERR               0xE4
 #define DEBUG_MEM_READ_MUL_DMA_ERR                0xE5
+
+#define DEBUG_FATAL                               0xEF // 2
 
 /*
  * Fatal error codes. Codes 1-4 are reserved for the hard drive devices.

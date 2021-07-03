@@ -42,6 +42,10 @@ void fatal(uint8_t lflash, uint8_t sflash)
 		: "r24"
 		);
 
+	// report to the debugger
+	debug(DEBUG_FATAL);
+	debug_dual(lflash, sflash);
+
 	// begin flash pattern
 	led_off();
 	_delay_ms(BREAK_DELAY);
