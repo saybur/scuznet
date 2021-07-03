@@ -986,10 +986,6 @@ uint8_t hdd_init(void)
 				// see http://elm-chan.org/fsw/ff/doc/expand.html
 				config_hdd[i].start = fp->obj.fs->database
 						+ fp->obj.fs->csize * (fp->obj.sclust - 2);
-				debug((config_hdd[i].start) >> 24);
-				debug((config_hdd[i].start) >> 16);
-				debug((config_hdd[i].start) >> 8);
-				debug((config_hdd[i].start));
 			}
 		}
 	}
