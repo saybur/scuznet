@@ -460,9 +460,6 @@ static void link_nuvo_read_packet(void)
 	read_buffer[2] = (uint8_t) (net_header.length);
 	read_buffer[3] = (uint8_t) ((net_header.length) >> 8);
 
-	debug(0xFF);
-	debug_dual((net_header.length) >> 8, net_header.length);
-
 	phy_phase(PHY_PHASE_DATA_IN);
 	phy_data_offer_bulk(read_buffer, 4);
 	NETSTAT res = net_stream_read(phy_data_offer_stream_atn);
