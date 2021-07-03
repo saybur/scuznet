@@ -101,13 +101,9 @@ int main(void)
 		fatal(FATAL_MEM_MOUNT_FAILED, res);
 	}
 
-	// attempt to read the main configuration file off the card
+	// read the main configuration file off the card
 	uint8_t target_masks;
-	CONFIG_RESULT cres = config_read(&target_masks);
-	if (cres)
-	{
-		fatal(FATAL_CONFIG_FILE, (uint8_t) cres);
-	}
+	config_read(&target_masks);
 
 	// complete setup
 	phy_init(target_masks);

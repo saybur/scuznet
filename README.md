@@ -37,6 +37,37 @@ The virtual hard drive can be formatted within class Mac OS using a variety of
 era-appropriate SCSI tools. Patched versions of *HD SC Setup* are known to
 work correctly.
 
+# Error Reporting
+
+If a runtime error occurs, the device will show a series of LED flashes.
+Consult the following table to determine what the issue is.
+
+| Long # | Short # | Issue                                                   |
+| ------ | ------- | ------------------------------------------------------- |
+| 1-4    | FatFs   | Error working with hard drive image.                    |
+| 5      | FatFs   | Can't open or read the `scuznet.ini` file.              |
+| 6      | 0       | General error in the INI parser.                        |
+| 6      | 1-255   | Error in the INI file @ line equal to short flashes.    |
+| 7      | 0       | Device experienced a power brown-out.                   |
+| 8      | 0       | Unable to open the memory card.                         |
+
+When a hard drive image cannot be accessed, the long flashes will indicate what
+configuration item is causing the issue, where 1 is for `[hdd1]`, 2 for
+`[hdd2]`, etc.
+
+For the `FatFs` items above, the number of short flashes is the underlying
+**FatFs** fault code ID. Common issues include:
+
+| ID  | FatFs Code      | Issue                                              |
+| --- | --------------- | -------------------------------------------------- |
+| 1   | FR_DISK_ERR     | A low-level problem with the memory card.          |
+| 5   | FR_NOT_READY    | The memory card was not ready for the operation.   |
+| 5   | FR_NO_FILE      | The specified file does not exist.                 |
+| 6   | FR_INVALID_NAME | The specified file name was invalid.               |
+| 7   | FR_DENIED       | Insufficient space for 'size=X' command.           |
+
+Refer to `lib/ff/ff.h` for a full listing.
+
 # License
 
 Except where otherwise noted, all files in this repository are available under

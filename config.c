@@ -226,7 +226,7 @@ static int config_handler(
  * ============================================================================
  */
 
-CONFIG_RESULT config_read(uint8_t* target_masks)
+void config_read(uint8_t* target_masks)
 {
 	// initialize GPIO and hard drive structs
 	GLOBAL_CONFIG_REGISTER = 0x00;
@@ -240,23 +240,29 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 	}
 	
 	*target_masks = 0;
-	CONFIG_RESULT result = CONFIG_OK;
 
 	// open the file off the memory card
 	FIL fil;
 	FRESULT res = f_open(&fil, "SCUZNET.INI", FA_READ);
 	if (res)
 	{
-		debug(DEBUG_CONFIG_FILE_MISSING);
-		f_close(&fil);
-		return CONFIG_NOFILE;
+		fatal(FATAL_CONFIG_FILE, (uint8_t) res);
 	}
 
 	// execute INIH parse using FatFs f_gets()
-	if (ini_parse_stream((ini_reader) f_gets, &fil, config_handler, NULL) < 0)
+	int pres = ini_parse_stream((ini_reader) f_gets, &fil, config_handler, NULL);
+	if (pres != 0)
 	{
-		debug(DEBUG_CONFIG_FILE_MISSING);
-		result = CONFIG_NOLOAD;
+		if (pres < 0)
+		{
+			fatal(FATAL_CONFIG_LINE_READ, 0);
+		}
+		else
+		{
+			uint8_t line = (uint8_t) pres;
+			if (pres > 255) line = 255;
+			fatal(FATAL_CONFIG_LINE_READ, line);
+		}
 	}
 	f_close(&fil);
 
@@ -301,6 +307,4 @@ CONFIG_RESULT config_read(uint8_t* target_masks)
 		}
 	}
 	*target_masks = used_masks & 0x7F;
-
-	return result;
 }

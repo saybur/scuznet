@@ -26,66 +26,69 @@
  * Some constants for spitting out the current position of work, i.e. the
  * printf() of the embedded world. I should really get a proper debugging
  * rig at some point...
+ * 
+ * The following comment for each line is the number of trailing bytes expected
+ * for each symbol.
  */
 #define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10 // 1
-#define DEBUG_CONFIG_FILE_MISSING                 0x11
-#define DEBUG_LOGIC_BAD_LUN                       0x50
-#define DEBUG_LOGIC_BAD_CMD                       0x52
-#define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53
-#define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E
-#define DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE          0x5D
-#define DEBUG_LOGIC_MESSAGE                       0x5F
-#define DEBUG_HDD_MODE_SENSE                      0x7B
-#define DEBUG_HDD_MODE_SELECT                     0x7C
-#define DEBUG_HDD_READ_BUFFER                     0x7D
-#define DEBUG_HDD_WRITE_BUFFER                    0x7E
-#define DEBUG_HDD_VERIFY                          0x7F
-#define DEBUG_HDD_READ_STARTING                   0x80
-#define DEBUG_HDD_READ_OKAY                       0x81
-#define DEBUG_HDD_WRITE_STARTING                  0x82
-#define DEBUG_HDD_WRITE_OKAY                      0x83
-#define DEBUG_HDD_SEEK                            0x8C
-#define DEBUG_HDD_NOT_READY                       0x90
-#define DEBUG_HDD_MEM_SEEK_ERROR                  0x91
-#define DEBUG_HDD_MEM_READ_ERROR                  0x92
-#define DEBUG_HDD_MEM_WRITE_ERROR                 0x93
-#define DEBUG_HDD_INVALID_OPERATION               0x94
-#define DEBUG_HDD_SIZE_EXCEEDED                   0x95
-#define DEBUG_LINK_TX_REQUESTED                   0xA0
-#define DEBUG_LINK_SHORT_TX_START                 0xA4
-#define DEBUG_LINK_SHORT_TX_DONE                  0xA5
-#define DEBUG_LINK_INQUIRY                        0xA8
-#define DEBUG_LINK_FILTER_UNICAST                 0xAE
-#define DEBUG_LINK_FILTER_MULTICAST               0xAF
-#define DEBUG_LINK_RX_ASKING_RESEL                0xB0
-#define DEBUG_LINK_RX_SKIP                        0xB1
-#define DEBUG_LINK_RX_NO_DATA                     0xB2
-#define DEBUG_LINK_RX_STARTING                    0xB3
-#define DEBUG_LINK_RX_PACKET_START                0xB4
-#define DEBUG_LINK_RX_PACKET_DONE                 0xB6
-#define DEBUG_LINK_RX_PACKET_TRUNCATED            0xB8
-#define DEBUG_LINK_RX_ENDING                      0xBF
-#define DEBUG_PHY_RESELECT_REQUESTED              0xD0
-#define DEBUG_PHY_RESELECT_STARTING               0xD1
-#define DEBUG_PHY_RESELECT_ARB_LOST               0xD2
-#define DEBUG_PHY_RESELECT_ARB_WON                0xD3
-#define DEBUG_PHY_RESELECT_ARB_INTERRUPTED        0xD4
-#define DEBUG_PHY_RESELECT_FINISHED               0xD5
-#define DEBUG_MEM_READ_SINGLE_FAILED              0xE0
-#define DEBUG_MEM_READ_MUL_CMD_FAILED             0xE1
-#define DEBUG_MEM_READ_MUL_FIRST_FAILED           0xE2
-#define DEBUG_MEM_READ_MUL_TIMEOUT                0xE3
-#define DEBUG_MEM_READ_MUL_FUNC_ERR               0xE4
-#define DEBUG_MEM_READ_MUL_DMA_ERR                0xE5
-
+#define DEBUG_LOGIC_BAD_LUN                       0x50 // 0
+#define DEBUG_LOGIC_BAD_CMD                       0x52 // 1
+#define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53 // 0
+#define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E // 1
+#define DEBUG_LOGIC_MESSAGE                       0x5F // 1
+#define DEBUG_HDD_MODE_SENSE                      0x7B // 0
+#define DEBUG_HDD_MODE_SELECT                     0x7C // 0
+#define DEBUG_HDD_READ_BUFFER                     0x7D // 0
+#define DEBUG_HDD_WRITE_BUFFER                    0x7E // 0
+#define DEBUG_HDD_VERIFY                          0x7F // 0
+#define DEBUG_HDD_READ_STARTING                   0x80 // 0
+#define DEBUG_HDD_READ_OKAY                       0x81 // 0
+#define DEBUG_HDD_WRITE_STARTING                  0x82 // 0
+#define DEBUG_HDD_WRITE_OKAY                      0x83 // 0
+#define DEBUG_HDD_SEEK                            0x8C // 0
+#define DEBUG_HDD_NOT_READY                       0x90 // 0
+#define DEBUG_HDD_MEM_SEEK_ERROR                  0x91 // 1
+#define DEBUG_HDD_MEM_READ_ERROR                  0x92 // 1
+#define DEBUG_HDD_MEM_WRITE_ERROR                 0x93 // 1
+#define DEBUG_HDD_INVALID_OPERATION               0x94 // 0
+#define DEBUG_HDD_SIZE_EXCEEDED                   0x95 // 0
+#define DEBUG_LINK_TX_REQUESTED                   0xA0 // 0
+#define DEBUG_LINK_SHORT_TX_START                 0xA4 // 0
+#define DEBUG_LINK_SHORT_TX_DONE                  0xA5 // 0
+#define DEBUG_LINK_INQUIRY                        0xA8 // 0
+#define DEBUG_LINK_UNKNOWN_MESSAGE                0xAC // 1
+#define DEBUG_LINK_UNKNOWN_EXTENDED_MESSAGE       0xAD // 1 + X
+#define DEBUG_LINK_FILTER_UNICAST                 0xAE // 0
+#define DEBUG_LINK_FILTER_MULTICAST               0xAF // 0
+#define DEBUG_LINK_RX_ASKING_RESEL                0xB0 // 0
+#define DEBUG_LINK_RX_SKIP                        0xB1 // 0
+#define DEBUG_LINK_RX_NO_DATA                     0xB2 // 0
+#define DEBUG_LINK_RX_STARTING                    0xB3 // 0
+#define DEBUG_LINK_RX_PACKET_START                0xB4 // 0
+#define DEBUG_LINK_RX_PACKET_DONE                 0xB6 // 0
+#define DEBUG_LINK_RX_PACKET_TRUNCATED            0xB8 // 1
+#define DEBUG_LINK_RX_ENDING                      0xBF // 0
+#define DEBUG_PHY_RESELECT_REQUESTED              0xD0 // 0
+#define DEBUG_PHY_RESELECT_STARTING               0xD1 // 0
+#define DEBUG_PHY_RESELECT_ARB_LOST               0xD2 // 0
+#define DEBUG_PHY_RESELECT_ARB_WON                0xD3 // 0
+#define DEBUG_PHY_RESELECT_ARB_INTERRUPTED        0xD4 // 0
+#define DEBUG_PHY_RESELECT_FINISHED               0xD5 // 0
+#define DEBUG_MEM_READ_SINGLE_FAILED              0xE0 // 0
+#define DEBUG_MEM_READ_MUL_CMD_FAILED             0xE1 // 1
+#define DEBUG_MEM_READ_MUL_FIRST_FAILED           0xE2 // 0
+#define DEBUG_MEM_READ_MUL_TIMEOUT                0xE3 // 1
+#define DEBUG_MEM_READ_MUL_FUNC_ERR               0xE4 // 0
+#define DEBUG_MEM_READ_MUL_DMA_ERR                0xE5 // 0
 #define DEBUG_FATAL                               0xEF // 2
 
 /*
  * Fatal error codes. Codes 1-4 are reserved for the hard drive devices.
  */
 #define FATAL_CONFIG_FILE                         5
-#define FATAL_BROWNOUT                            6
-#define FATAL_MEM_MOUNT_FAILED                    7
+#define FATAL_CONFIG_LINE_READ                    6
+#define FATAL_BROWNOUT                            7
+#define FATAL_MEM_MOUNT_FAILED                    8
 
 // LED control macros
 #define led_on()              LED_PORT.DIR |= LED_PIN;

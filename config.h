@@ -36,13 +36,6 @@
  * configuration.
  */
 
-typedef enum {
-	CONFIG_OK = 0,
-	CONFIG_NOFILE = 1, // unable to locate the 'scuznet.ini' file
-	CONFIG_NOLOAD = 2, // unable to load the 'scuznet.ini' file
-	CONFIG_HDDERR = 3  // issue during the hard drive volume setup
-} CONFIG_RESULT;
-
 /*
  * ============================================================================
  *   CONFIGURATION VALUES
@@ -277,8 +270,10 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
  * variables. This returns the logical OR of the target masks in the provided
  * pointer.
  * 
- * The volume must be mounted before this is invoked!
+ * If there is a problem reading the configuration, this will directly invoke
+ * fatal() with appropriate messages. The volume must be mounted before this is
+ * invoked!
  */
-CONFIG_RESULT config_read(uint8_t*);
+void config_read(uint8_t*);
 
 #endif /* CONFIG_H */

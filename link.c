@@ -502,8 +502,8 @@ static uint16_t link_nuvo_message_out_post_rx(void)
 			else
 			{
 				// not a known extended message, debug and abort
-				debug_dual(DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE, 0x01);
-				debug(0x03);
+				debug_dual(DEBUG_LINK_UNKNOWN_EXTENDED_MESSAGE, 0x03);
+				debug(ext_cmd);
 				debug(phy_data_ask());
 				debug(phy_data_ask());
 			}
@@ -513,8 +513,7 @@ static uint16_t link_nuvo_message_out_post_rx(void)
 			// not a known extended message, debug and abort
 			uint16_t ext_real_len = ext_len;
 			if (ext_len == 0) ext_real_len = 256;
-			debug_dual(DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE, message);
-			debug(ext_len);
+			debug_dual(DEBUG_LINK_UNKNOWN_EXTENDED_MESSAGE, ext_len);
 			for (uint16_t i = 0; i < ext_real_len; i++)
 			{
 				debug(phy_data_ask());
@@ -531,7 +530,7 @@ static uint16_t link_nuvo_message_out_post_rx(void)
 	else
 	{
 		// message is not supported, just go bus free unexpectedly
-		debug_dual(DEBUG_LOGIC_LINK_UNKNOWN_MESSAGE, message);
+		debug_dual(DEBUG_LINK_UNKNOWN_MESSAGE, message);
 		phy_phase(PHY_PHASE_BUS_FREE);
 		return 0;
 	}

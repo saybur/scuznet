@@ -571,8 +571,7 @@ DRESULT disk_read_multi (
 		}
 		else
 		{
-			debug(DEBUG_MEM_READ_MUL_CMD_FAILED);
-			debug(cmdres);
+			debug_dual(DEBUG_MEM_READ_MUL_CMD_FAILED, cmdres);
 			res = RES_ERROR;
 		}
 
