@@ -177,6 +177,14 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define NET_SCRATCH_IOADDR      0x06
 
 /*
+ * Timer to track the duration from the last time we requested a packet to be
+ * sent. This helps inform the decision to cancel a packet transmission and
+ * try it again.
+ */
+#define NET_TIMER               TCD0
+#define NET_TIMER_OVF           TC0_OVFIF_bm
+
+/*
  * ****************************************************************************
  *   SCSI PHY
  * ****************************************************************************

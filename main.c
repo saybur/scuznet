@@ -71,6 +71,7 @@ static void main_handle(void)
 	}
 
 	link_check_rx();
+	net_transmit_check();
 }
 
 int main(void)

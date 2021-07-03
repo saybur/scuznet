@@ -75,6 +75,9 @@ static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
 #define NET_DMA_CTRLA           (DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
 #define NET_DMA_STARTCMD        0x84 // the above masks, plus ENABLE
 
+// threshold after which the packet is considered to be late, in milliseconds
+#define NET_TIMER_TX_LIMIT      250
+
 /*
  * This (re-)enables the /E_INT interrupt routine. That ISR is auto-disabled at
  * the start of each packet reception event. This should only be used when
@@ -90,6 +93,19 @@ static inline __attribute__((always_inline)) void net_enable_isr(void)
 {
 	ENC_PORT_EXT.INTFLAGS = PORT_INT0IF_bm;
 	ENC_PORT_EXT.INTCTRL = PORT_INT0LVL_LO_gc;
+}
+
+/*
+ * Resets the packet transmission timer. This assumes a fixed clock speed of
+ * 32MHz, which may not be the case in the future.
+ */
+static inline __attribute__((always_inline)) void net_timer_reset(void)
+{
+	NET_TIMER.CTRLA = TC_CLKSEL_OFF_gc;
+	NET_TIMER.CTRLFSET = TC_CMD_RESET_gc;
+	// clk/1024 is 32us/tick, * 32 = 1.024ms
+	NET_TIMER.PER = (NET_TIMER_TX_LIMIT << 5);
+	NET_TIMER.CTRLA = TC_CLKSEL_DIV1024_gc;
 }
 
 /*
@@ -404,69 +420,24 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
  */
 NETSTAT net_transmit(uint16_t length)
 {
-	uint8_t rd;
-	net_lock();
-
 	/*
 	 * Ensure the previous transmission completed. Per errata 13, when we are
 	 * operating in half-duplex mode there are false/late collision issues that
-	 * need to be worked around. We attempt to retransmit several times when
-	 * this happens.
+	 * need to be worked around. This is handled in the below call.
 	 */
-	if (NET_FLAGS & NETFLAG_TXUSED)
+	while (NET_FLAGS & NETFLAG_TXREQ)
 	{
-		uint8_t repcnt = 16;
-		uint16_t countdown = 0x1000;
-		do
-		{
-			// wait until one of EIR.TXIF and EIR.TXERIF clear
-			do
-			{
-				enc_cmd_read(ENC_EIR, &rd);
-			}
-			while (! ((rd & ENC_TXIF_bm)
-					|| (rd & ENC_TXERIF_bm)
-					|| (--countdown) == 0));
-			// clear pending transmit request
-			enc_cmd_clear(ENC_ECON1, ENC_TXRTS_bm);
-			// if we had to wait until the countdown we consider it a failure
-			if (countdown == 0)
-			{
-				rd |= ENC_TXERIF_bm;
-			}
+		net_transmit_check();
+	}
 
-			// was the packet transmitted successfully?
-			if (rd & ENC_TXERIF_bm)
-			{
-				debug(DEBUG_NET_TX_REPEATED);
-				// reset TX subsystem
-				enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
-				enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
-				enc_cmd_clear(ENC_EIR, ENC_TXIF_bm | ENC_TXERIF_bm);
-				// pointers are still good from before, just enqueue
-				enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
-				// we wait longer this time
-				countdown = 0xFFFF;
-			}
-			else
-			{
-				// last packet OK, moving on to the current one
-				break;
-			}
-		}
-		while (--repcnt);
-	}
-	else
-	{
-		NET_FLAGS |= NETFLAG_TXUSED;
-	}
-	debug(DEBUG_NET_TX_CLEARED);
+	// reserve
+	net_lock();
 
 	// verify we're pointing to the free buffer
 	uint8_t txsel = (NET_FLAGS & NETFLAG_TXBUF);
 	uint8_t txh = txsel ? NET_XMIT_BUF1 : NET_XMIT_BUF2;
 
-	// per errata, reset TX subsystem to prevent possible stalled transmissions
+	// per errata 12, reset TX to prevent stalled transmissions
 	enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
 	enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
 	enc_cmd_clear(ENC_EIR, ENC_TXIF_bm | ENC_TXERIF_bm);
@@ -486,12 +457,70 @@ NETSTAT net_transmit(uint16_t length)
 
 	// set ECON1.TXRTS, which starts transmission
 	enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
+	NET_FLAGS |= NETFLAG_TXREQ;
 
 	// reset the information for next time
 	txsel ? (NET_FLAGS &= ~NETFLAG_TXBUF) : (NET_FLAGS |= NETFLAG_TXBUF);
+	net_timer_reset();
 
 	// done
 	net_unlock();
+	return NETSTAT_OK;
+}
+
+NETSTAT net_transmit_check(void)
+{
+	uint8_t reset = 0;
+	uint8_t rd;
+
+	if (NET_FLAGS & NETFLAG_TXREQ)
+	{
+		net_lock();
+		enc_cmd_read(ENC_EIR, &rd);
+		if (rd & ENC_TXERIF_bm)
+		{
+			// packet transmission failed due to error, re-transmit
+			debug(DEBUG_NET_TX_ERROR_RETRANSMIT);
+			reset = 1;
+		}
+		else if (rd & ENC_TXIF_bm)
+		{
+			// packet transmission OK!
+			NET_FLAGS &= ~NETFLAG_TXREQ;
+		}
+		else
+		{
+			/*
+			 * Packet has yet to transmit. While this isn't mentioned in the
+			 * errata, I've had issues where this condition continues
+			 * indefinitely, so we have a grace period timer running that helps
+			 * keep track of when the system should be reset to have another
+			 * go at it.
+			 */
+			if (NET_TIMER.INTFLAGS & NET_TIMER_OVF)
+			{
+				// queue up a reset
+				debug(DEBUG_NET_TX_TIMEOUT_RETRANSMIT);
+				reset = 1;
+			}
+		}
+
+		// if needed, reset the transmission system for another try
+		if (reset)
+		{
+			// reset TX subsystem
+			enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
+			enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
+			enc_cmd_clear(ENC_EIR, ENC_TXIF_bm | ENC_TXERIF_bm);
+			// set ECON1.TXRTS again
+			enc_cmd_set(ENC_ECON1, ENC_TXRTS_bm);
+			// and reset the monitor timer
+			net_timer_reset();
+		}
+
+		net_unlock();
+	}
+
 	return NETSTAT_OK;
 }
 

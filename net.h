@@ -66,7 +66,7 @@ typedef enum {
  */
 #define NETFLAG_PKT_PENDING     _BV(1)
 #define NETFLAG_TXBUF           _BV(2)
-#define NETFLAG_TXUSED          _BV(3)
+#define NETFLAG_TXREQ           _BV(3)
 
 /*
  * If nonzero, there is a network packet pending and the values in net_header
@@ -129,5 +129,12 @@ NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length);
  * length of the data to transmit.
  */
 NETSTAT net_transmit(uint16_t length);
+
+/*
+ * Checks on the status of pending transactions. This should be called
+ * intermittently in between normal transmissions to prevent the TX subsystem
+ * from stalling.
+ */
+NETSTAT net_transmit_check(void);
 
 #endif /* NET_H */
