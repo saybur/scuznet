@@ -148,6 +148,10 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
  * ****************************************************************************
  *   ETHERNET PHY / NETWORKING
  * ****************************************************************************
+ * 
+ * This subsystem requires access to two DMA channels, the peripherals below,
+ * additional resources in the hardware definitinos, and the CRC unit for
+ * calculating hash filter values.
  */
 
 /*

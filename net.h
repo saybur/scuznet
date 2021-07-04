@@ -40,13 +40,13 @@ typedef struct NetHeader_t {
 extern volatile NetHeader net_header;
 
 /*
- * Options for providing to net_set_filter.
+ * Options for providing to net_set_filter. For each of these, only
+ * OR-filtering is used, so a packet matching *any* of these will be accepted.
  */
-typedef enum {
-	NET_FILTER_UNICAST,     // unicast only
-	NET_FILTER_BROADCAST,   // unicast, plus broadcast
-	NET_FILTER_MULTICAST    // unicast, broadcast, and multicast
-} NETFILTER;
+#define NET_FILTER_UNICAST      0x01
+#define NET_FILTER_BROADCAST    0x02
+#define NET_FILTER_MULTICAST    0x04
+#define NET_FILTER_HASH         0x08
 
 /*
  * Return values for the functions.
@@ -86,9 +86,32 @@ typedef enum {
 void net_setup(uint8_t*);
 
 /*
- * Updates the filtering system to match packets of the given type.
+ * Updates the built-in hash filter bytes. These are eight bytes maintained
+ * internally, for writing to the EHT0:7 registers on the device. These are
+ * only copied over when NET_FILTER_HASH is provided to the filter call.
+ * See the datasheet for details about the registers. For details about the
+ * calculation, refer to the PIC18F97J60 family datasheet (inexplicably,
+ * details of the hash filter calculation are missing from the ENC28J60
+ * datasheet).
+ * 
+ * The first call accepts a six-byte MAC destination address and handles all
+ * the calculations internally, setting the correct matching bit in the
+ * internal array. The second call manipulates one of the bytes directly,
+ * replacing it with the given value. The third call wipes the internal array
+ * back to zero.
+ * 
+ * None of these calls will change the actual device registers. For that,
+ * invoke net_set_filter() and include the hash filter selection.
  */
-NETSTAT net_set_filter(NETFILTER ftype);
+void net_hash_filter_add(uint8_t* mac);
+void net_hash_filter_set(uint8_t idx, uint8_t value);
+void net_hash_filter_reset(void);
+
+/*
+ * Updates the filtering system to match packets of the given type. Provide
+ * a combination of desired types, like (NET_FILTER_UNICAST | NET_FILTER_HASH).
+ */
+NETSTAT net_set_filter(uint8_t ftype);
 
 /*
  * Skips past the current packet, adjusting pointers as needed.

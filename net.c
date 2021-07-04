@@ -78,6 +78,9 @@ static const uint8_t dma_write_arr[] = { ENC_OP_RBM,
 // threshold after which the packet is considered to be late, in milliseconds
 #define NET_TIMER_TX_LIMIT      250
 
+// the eight hash table bytes
+static uint8_t hash_table[8];
+
 /*
  * This (re-)enables the /E_INT interrupt routine. That ISR is auto-disabled at
  * the start of each packet reception event. This should only be used when
@@ -302,39 +305,89 @@ void net_setup(uint8_t* mac)
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
 
 	/*
+	 * Clear the hash table bytes in case there are any set.
+	 */
+	net_hash_filter_reset();
+
+	/*
 	 * Enable interrupts when /E_INT is asserted (pin was set up earlier
 	 * in enc.c).
 	 */
 	net_enable_isr();
 }
 
-NETSTAT net_set_filter(NETFILTER ftype)
+void net_hash_filter_add(uint8_t* mac)
 {
-	net_lock();
+	// setup the CRC unit
+	CRC.CTRL = CRC_RESET_RESET1_gc;
+	_NOP();
+	CRC.CTRL = CRC_CRC32_bm | CRC_SOURCE_IO_gc;
+	_NOP();
+	// load the MAC
+	for (uint8_t i = 0; i < 6; i++)
+	{
+		CRC.DATAIN = *(mac + i);
+	}
+	// mark complete
+	CRC.STATUS |= CRC_BUSY_bm;
+
+	/*
+	 * The CRC needs to be reversed and complemented. We just pull out the
+	 * six bits we need from 28:23.
+	 */
+	uint8_t h = ~(CRC.CHECKSUM0); // 24:31
+	uint8_t l = ~(CRC.CHECKSUM1); // 16:23
+	uint8_t ptr = 0;
+	if (h & 0x08) ptr |= 0x20;
+	if (h & 0x10) ptr |= 0x10;
+	if (h & 0x20) ptr |= 0x08;
+	if (h & 0x40) ptr |= 0x04;
+	if (h & 0x80) ptr |= 0x02;
+	if (l & 0x01) ptr |= 0x01;
+
+	// set the correct bit
+	uint8_t idx = ptr >> 3;
+	uint8_t bit = 1 << (ptr & 0x07);
+	hash_table[idx] |= bit;
+}
+
+void net_hash_filter_set(uint8_t idx, uint8_t value)
+{
+	hash_table[idx & 0x07] = value;
+}
+
+void net_hash_filter_reset(void)
+{
+	for (uint8_t i = 0; i < 8; i++) hash_table[i] = 0;
+}
+
+NETSTAT net_set_filter(uint8_t ftype)
+{
+	uint8_t v = ENC_CRCEN_bm;
+	if (ftype & NET_FILTER_UNICAST) v |= ENC_UCEN_bm;
+	if (ftype & NET_FILTER_BROADCAST) v |= ENC_BCEN_bm;
+	if (ftype & NET_FILTER_MULTICAST) v |= ENC_MCEN_bm;
+	if (ftype & NET_FILTER_HASH) v |= ENC_HTEN_bm;
 
 	/*
 	 * Per 7.2.1, we should disable packet reception, reset ERXFCON, then
 	 * re-enable packet reception.
 	 */
+	net_lock();
 	enc_cmd_clear(ENC_ECON1, ENC_RXEN_bm);
-	switch (ftype)
+	if (ftype & NET_FILTER_HASH)
 	{
-		case NET_FILTER_MULTICAST:
-			enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-				| ENC_CRCEN_bm
-				| ENC_MCEN_bm);
-			break;
-		case NET_FILTER_BROADCAST:
-			enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-				| ENC_BCEN_bm
-				| ENC_CRCEN_bm);
-			break;
-		default:
-			enc_cmd_write(ENC_ERXFCON, ENC_UCEN_bm
-				| ENC_CRCEN_bm);
+		enc_cmd_write(ENC_EHT0, hash_table[0]);
+		enc_cmd_write(ENC_EHT1, hash_table[1]);
+		enc_cmd_write(ENC_EHT2, hash_table[2]);
+		enc_cmd_write(ENC_EHT3, hash_table[3]);
+		enc_cmd_write(ENC_EHT4, hash_table[4]);
+		enc_cmd_write(ENC_EHT5, hash_table[5]);
+		enc_cmd_write(ENC_EHT6, hash_table[6]);
+		enc_cmd_write(ENC_EHT7, hash_table[7]);
 	}
+	enc_cmd_write(ENC_ERXFCON, v);
 	enc_cmd_set(ENC_ECON1, ENC_RXEN_bm);
-
 	net_unlock();
 	return NETSTAT_OK;
 }

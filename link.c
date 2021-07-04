@@ -117,9 +117,6 @@ static uint8_t asked_for_reselection = 0;
 static uint8_t mac_rom[6];
 static uint8_t mac_dyn[6];
 
-// if true, allow in AppleTalk multicast traffic
-static uint8_t allow_atalk;
-
 /*
  * ============================================================================
  *   UTILITY FUNCTIONS
@@ -326,31 +323,53 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 	uint8_t alloc = cmd[4];
 	if (alloc > 8) alloc = 8;
 
+	/*
+	 * We get 8 bytes, which I believe are targeted at the 8390's MAR0-7
+	 * registers. The only patterns I've ever seen are all zeroes with the MSB
+	 * of the last byte set (for MAR7, FB63, I think), or just all zeroes. If
+	 * there is a different pattern, report it to the debugger.
+	 */
+
+	uint8_t unexpected = 0;
 	// get the hash bytes
 	phy_phase(PHY_PHASE_DATA_OUT);
 	for (uint8_t i = 0; i < alloc; i++)
 	{
 		data[i] = phy_data_ask();
+		if (i != 8 && data[i] != 0) unexpected = 1;
 	}
 
-	/*
-	 * We get 8 bytes, which I believe are targeted at the 8390's MAR0-7
-	 * registers. The only patterns I've ever seen are all zeroes with the MSB
-	 * of the last byte set (for MAR7, FB63, I think), or just all zeroes. This
-	 * doesn't make much sense to me for multicast traffic. As a result, for
-	 * now, we use that MSB bit as a flag to turn the ENC28J60 multicast filter
-	 * on or off. At some point this should be revisited to cut down on traffic
-	 * accepted by the device.
-	 */
-	if (data[7] & 0x80)
+	// log if something unusual was found
+	if (alloc != 8 || unexpected == 1)
 	{
-		net_set_filter(NET_FILTER_MULTICAST);
-		debug(DEBUG_LINK_FILTER_MULTICAST);
+		debug_dual(DEBUG_LINK_FILTER_UNKNOWN, alloc);
+		for (uint8_t i = 0; i < 8; i++) debug(data[i]);
+
+		// fallback to accepting all multicast
+		net_set_filter(NET_FILTER_UNICAST
+					| NET_FILTER_BROADCAST
+					| NET_FILTER_MULTICAST);
 	}
 	else
 	{
-		net_set_filter(NET_FILTER_BROADCAST);
-		debug(DEBUG_LINK_FILTER_UNICAST);
+		uint8_t v = data[7] & 0x80;
+		debug_dual(DEBUG_LINK_FILTER, v);
+		if (v)
+		{
+			// corresponds to 09:00:07:FF:FF:FF for the ENC28J60
+			net_hash_filter_set(7, 0x02);
+			uint8_t filter = NET_FILTER_UNICAST
+					| NET_FILTER_BROADCAST
+					| NET_FILTER_HASH;
+			debug_dual(DEBUG_LINK_FILTER, filter);
+			net_set_filter(filter);
+		}
+		else
+		{
+			uint8_t filter = NET_FILTER_UNICAST;
+			debug_dual(DEBUG_LINK_FILTER, filter);
+			net_set_filter(filter);
+		}
 	}
 
 	logic_status(LOGIC_STATUS_GOOD);
@@ -364,44 +383,34 @@ static void link_cmd_dayna_filter(uint8_t* cmd)
 	 * packets to accept. The length field of the 0D command indicates how
 	 * many packet filters will be sent. The accept our MAC and broadcast
 	 * seems to be generally of the form 01 00 5E 00 00 01 whereas accept
-	 * AppleTalk packets will be 09 00 07 FF FF FF. The below loops through
-	 * the packet filter information sent and if 09 (i.e. accept AppleTalk)
-	 * is in any of the first byte positions of the packet filter
-	 * information it allows Appletalk packets.
+	 * AppleTalk packets will be 09 00 07 FF FF FF.
 	 * 
-	 * Note that emulating this behaviour does not seem to be strictly
-	 * necessary. It IS necessary to read all of the bytes sent with the 0D
-	 * command (otherwise Appletalk will fail to activate) but this behaviour
-	 * is being emulated to match the actual system behaviour as closely as
-	 * possible.
+	 * The provided addresses are fed into the hash table filter, which
+	 * unfortunately accepts all packets matching the filter, not just
+	 * multicast packets.
 	 */
 
 	uint16_t alloc = (cmd[3] << 8) + cmd[4];
-	uint8_t param_set = 0;
-	allow_atalk = 0;
+	uint8_t filter[6];
+	uint8_t fp = 0;
+
+	net_hash_filter_reset(); // clear out old information
 
 	phy_phase(PHY_PHASE_DATA_OUT);
 	for (uint16_t i = 0; i < alloc; i++)
 	{
-		// I've only ever seen two packet filters sent but this allows for 3
-		// (i.e. activate Appletalk in position 1, 2 or 3)
-		param_set = phy_data_ask();
-		if ((i == 0 && param_set == 0x09)
-				|| (i == 6 && param_set == 0x09)
-				|| (i == 12 && param_set == 0x09))
+		filter[fp++] = phy_data_ask();
+		if (fp == 6)
 		{
-			allow_atalk = 1;
+			net_hash_filter_add(filter);
+			fp = 0;
 		}
 	}
 
-	if (allow_atalk)
-	{
-		net_set_filter(NET_FILTER_MULTICAST);
-	}
-	else
-	{
-		net_set_filter(NET_FILTER_BROADCAST);
-	}
+	debug_dual(DEBUG_LINK_FILTER, alloc);
+	net_set_filter(NET_FILTER_UNICAST
+			| NET_FILTER_BROADCAST
+			| NET_FILTER_HASH);
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
@@ -646,6 +655,12 @@ void link_init()
 		{
 			mac_rom[i] = config_enet.mac[i];
 			mac_dyn[i] = config_enet.mac[i];
+		}
+
+		if (config_enet.type == LINK_DAYNA)
+		{
+			// for this firmware, broadcast always on
+			net_set_filter(NET_FILTER_UNICAST | NET_FILTER_BROADCAST);
 		}
 	}
 	else

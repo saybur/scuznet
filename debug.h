@@ -63,8 +63,8 @@
 #define DEBUG_LINK_INQUIRY                        0xA8 // 0
 #define DEBUG_LINK_UNKNOWN_MESSAGE                0xAC // 1
 #define DEBUG_LINK_UNKNOWN_EXTENDED_MESSAGE       0xAD // 1 + X
-#define DEBUG_LINK_FILTER_UNICAST                 0xAE // 0
-#define DEBUG_LINK_FILTER_MULTICAST               0xAF // 0
+#define DEBUG_LINK_FILTER                         0xAE // 1
+#define DEBUG_LINK_FILTER_UNKNOWN                 0xAF // 9
 #define DEBUG_LINK_RX_ASKING_RESEL                0xB0 // 0
 #define DEBUG_LINK_RX_SKIP                        0xB1 // 0
 #define DEBUG_LINK_RX_NO_DATA                     0xB2 // 0

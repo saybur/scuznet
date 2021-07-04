@@ -61,7 +61,8 @@ typedef enum {
 
 /*
  * Initializes the emulated link device using the configuration subsystem
- * data. This function should only be called once, at startup.
+ * data. This function should only be called once, at startup, and only
+ * after the networking device has been initialized.
  */
 void link_init(void);
 
