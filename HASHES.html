@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+
+<head>
+	<meta charset="UTF-8" />
+	<title>Network Hash Filter Calculator</title>
+	<style>
+		body {
+			font-family: monospace;
+			color: white;
+			background-color: #222;
+			font-size: larger;
+		}
+
+		a {
+			color: white;
+		}
+
+		blockquote {
+			font-style: italic;
+		}
+
+		input {
+			font-family: inherit;
+		}
+
+		input[type=number] {
+			width: 3em;
+		}
+
+		fieldset {
+			display: inline-block;
+		}
+
+		legend {
+			text-transform: uppercase;
+			font-weight: bold;
+			font-size: larger;
+		}
+
+		.settings {
+			width: 620px;
+			display: grid;
+			grid-template-columns: 0.4fr 1fr;
+			grid-gap: 0.5em;
+			margin-bottom: 0.5em;
+		}
+
+		.output {
+			margin-top: 0.5em;
+		}
+	</style>
+	<script>
+		/*
+		 * CRC-32 implementation, from:
+		 * https://simplycalc.com/crc32-source.php
+		 *
+		 * License:
+		 * "This source code is in the public domain. You may use, share, modify
+		 * it freely, without any conditions or restrictions."
+		 */
+
+		let reversedPolynomial = crc32_reverse(0x4C11DB7);
+
+		function crc32_generate() {
+		    var table = new Array()
+		    var i, j, n
+
+		    for (i = 0; i < 256; i++) {
+				n = i
+				for (j = 8; j > 0; j--) {
+					if ((n & 1) == 1) {
+						n = (n >>> 1) ^ reversedPolynomial
+					} else {
+						n = n >>> 1
+					}
+				}
+				table[i] = n
+		    }
+
+		    return table
+		}
+
+		function crc32_add_byte(table, crc, byte) {
+		    crc = (crc >>> 8) ^ table[(byte) ^ (crc & 0x000000FF)]
+		    return crc
+		}
+
+		function crc32_final(crc) {
+		    // crc = ~crc
+		    crc = (crc < 0) ? (0xFFFFFFFF + crc + 1) : crc
+		    return crc
+		}
+
+		function crc32_reverse(polynomial) {
+		    var reversed = 0
+
+		    for (i = 0; i < 32; i++) {
+				reversed = reversed << 1
+				reversed = reversed | ((polynomial >>> i) & 1)
+		    }
+
+		    return reversed
+		}
+
+		// rendering code
+
+		function to_hex(num, pad) {
+			var hex = (num >>> 0).toString(16).toUpperCase();
+			while (hex.length < pad) {
+				hex = '0' + hex;
+			}
+			return "0x" + hex;
+		}
+
+		function to_binary(num, pad) {
+			var bin = (num >>> 0).toString(2);
+			while (bin.length < 32) {
+				bin = '0' + bin;
+			}
+			var bstr = "";
+			for (i = 0; i < pad / 4; i++) {
+				bstr += bin.substring(i * 4, i * 4 + 4);
+				bstr += ' ';
+			}
+			return bstr.trim();
+		}
+
+		// update routine
+
+		function calculate_filter() {
+			var table = crc32_generate();
+			var crc = 0xFFFFFFFF;
+			for (i = 1; i <= 6; i++) {
+				let v = parseInt(document.getElementById('mac' + i).value, 16);
+				crc = crc32_add_byte(table, crc, v);
+			}
+			crc = crc32_reverse(crc32_final(crc));
+
+			document.getElementById('crc32').value = to_hex(crc, 8)
+				+ " (" + to_binary(crc, 32) + ")";
+			let enc = (crc & 0x1F800000) >>> 23;
+			let dp = (crc & 0xFC000000) >>> 26;
+			document.getElementById('enc28j60').value = to_hex(enc, 2)
+				+ " (" + enc + ")";
+			document.getElementById('dp8390').value = to_hex(dp, 2)
+				+ " (" + dp + ")";
+		}
+	</script>
+</head>
+
+<body>
+	<h1>Network Hash Filter Calculator</h1>
+
+	<p>This tool helps calculate hash table filter values for the
+	<a href="https://www.microchip.com/wwwproducts/en/en022889">ENC28J60</a>
+	Ethernet chip.</p>
+
+	<form onsubmit="calculate_filter(); return false">
+		<fieldset>
+			<legend>Inputs</legend>
+			<div class="settings">
+				<label>Destination MAC:</label>
+				<div id="mac">
+					<input type="text" id="mac1" name="mac1" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="02" />:
+					<input type="text" id="mac2" name="mac2" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="00" />:
+					<input type="text" id="mac3" name="mac3" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="00" />:
+					<input type="text" id="mac4" name="mac4" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="BE" />:
+					<input type="text" id="mac5" name="mac5" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="EE" />:
+					<input type="text" id="mac6" name="mac6" size="2"
+						minlength="2" maxlength="2"
+						pattern="[A-Fa-f\d]+" value="EF" />
+				</div>
+			</div>
+			<input type="submit" value="Calculate" />
+		</fieldset>
+	</form>
+
+	<form>
+		<fieldset class="output">
+			<legend>Outputs</legend>
+			<div class="settings">
+				<label for="crc32">CRC-32:</label>
+				<input type="text" id="crc32" name="crc32" />
+				<label for="enc28j60">ENC28J60:</label>
+				<input type="text" id="enc28j60" name="enc28j60" />
+				<label for="dp8390">DP8390:</label>
+				<input type="text" id="dp8390" name="dp8390" />
+			</div>
+		</fieldset>
+	</form>
+
+	<p>The datasheet doesn't give many details about the hash table filter.
+	Fortunately, <a href="https://www.microchip.com/forums/m324103.aspx">this post</a>
+	suggested the PIC18F97J60, which uses a very similar (if not identical)
+	Ethernet PHY. From
+	<a href="https://www.microchip.com/wwwproducts/en/PIC18F97J60">that datasheet</a>:</p>
+
+	<blockquote>The filter performs a 32-bit CRC over the six destination
+	address bytes in the packet, using the polynomial, 4C11DB7h. From the
+	resulting 32-bit binary number, a 6-bit value is derived from bits
+	&lt;28:23&gt;. This value, in turn, points to a location in a table formed
+	by the Ethernet Hash Table registers, ETH0 through ETH7. If the bit in
+	that location is set, the packet meets the Hash Table filter criteria
+	and is accepted.</blockquote>
+
+	<p>The Nuvolink SC uses a 8390 Ethernet controller. This has a similar
+	hash table filter, but unfortunately uses bits &lt;31:26&gt; instead of
+	the above range, so the filters are not compatible. Details on the 8390
+	calculation can be retrieved from the DP83901A datasheet (Digikey P/N
+	DP83901AV-ND).</p>
+</body>
+
+</html>
