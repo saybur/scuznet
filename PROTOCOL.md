@@ -77,10 +77,12 @@ The 8 data byte patterns seen are as follows:
 * 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80 (usually after the 0x0C
   command)
 
-These may be for the 8390’s multicast address registers (MAR0-MAR7). From what
-I can find, this doesn't make a ton of sense, as it would only allow a very
-particular set of multicast addresses to be allowed into the device, and would
-not include the 09:00:07:FF:FF:FF address used by AppleTalk.
+These are probably for the 8390’s multicast address registers (MAR0-MAR7).
+The hash filter on that chip performs a CRC-32 across the six destination MAC
+address bytes, and then uses bits 31:26 of the result as a pointer into these
+eight filter bytes. Value 0x3F (bit 63) is the hash result for
+09:00:07:FF:FF:FF, so the last byte of the command is likely the MAR7 value,
+with the high bit set to correspond to this multicast address.
 
 ### 0x0A: SEND MESSAGE(6) (probably cmmd_sndmsg)
 
