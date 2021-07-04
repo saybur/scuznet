@@ -336,7 +336,14 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 	for (uint8_t i = 0; i < alloc; i++)
 	{
 		data[i] = phy_data_ask();
-		if (i != 8 && data[i] != 0) unexpected = 1;
+		if (i == 7)
+		{
+			if (data[i] != 0x80 && data[i] != 0x00) unexpected = 1;
+		}
+		else
+		{
+			if (data[i] != 0x00) unexpected = 1;
+		}
 	}
 
 	// log if something unusual was found
