@@ -25,17 +25,6 @@
 /*
  * ============================================================================
  *  
- *   ******* VERY IMPORTANT WARNING *******
- * 
- * ============================================================================
- * 
- * This version of the hardware is not fully tested and should only be used if
- * you are willing to help work out the (possibly board-damaging) bugs.
- */
-
-/*
- * ============================================================================
- *  
  *   PIN AND PER-HARDWARE PERIPHERAL ASSIGNMENTS
  * 
  * ============================================================================
@@ -71,8 +60,10 @@
 #define DEBUG_USART             USARTE0
 #define DEBUG_PORT              PORTE
 #define DEBUG_PIN_TX            PIN3_bm
+#define LED_POW_PORT            PORTE
+#define LED_POW_PIN             PIN1_bm
 #define LED_PORT                PORTE
-#define LED_PIN                 PIN1_bm
+#define LED_PIN                 PIN2_bm
 
 /*
  * ****************************************************************************

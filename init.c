@@ -84,6 +84,10 @@ void init_debug(void)
 	DEBUG_USART.BAUDCTRLA = 3; // 500kbps
 	DEBUG_USART.CTRLB |= USART_TXEN_bm;
 
+#if defined(LED_POW_PORT) && defined(LED_POW_PIN)
+	LED_POW_PORT.DIRSET = LED_POW_PIN;
+#endif
+
 	LED_PORT.OUT &= ~LED_PIN;
 }
 
