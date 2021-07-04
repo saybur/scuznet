@@ -954,63 +954,92 @@ uint16_t hdd_init(void)
 				err += (uint8_t) FR_INVALID_OBJECT;
 				return err;
 			}
-
-			/*
-			 * We can enable much faster performance if the file is contiguous,
-			 * and thus supporting low-level access that bypasses the FAT
-			 * layer.
-			 */
-			uint8_t contiguous = 0;
-			if (config_hdd[i].mode == HDD_MODE_FORCEFAST)
-			{
-				// they asked us not to check...
-				contiguous = 1;
-			}
-			else if (config_hdd[i].mode == HDD_MODE_FAST)
-			{
-				// check if contiguous
-				res = f_contiguous(fp, &contiguous);
-				if (res)
-				{
-					err += (uint8_t) res;
-					return err;
-				}
-			}
-			if (contiguous)
-			{
-				// find the starting sector for the file
-				// see http://elm-chan.org/fsw/ff/doc/expand.html
-				config_hdd[i].start = fp->obj.fs->database
-						+ fp->obj.fs->csize * (fp->obj.sclust - 2);
-			}
-		}
-	}
-
-	// verify native volumes do not exceed the end of the memory card
-	// TODO this is experimental and needs some testing
-	uint32_t card_size;
-	if (disk_ioctl(0, GET_SECTOR_COUNT, &card_size))
-	{
-		// FIXME
-		err = 0xFFFF;
-		return err;
-	}
-	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
-	{
-		if (config_hdd[i].id != 255 && config_hdd[i].start > 0)
-		{
-			uint32_t end = config_hdd[i].start + config_hdd[i].size;
-			if(end > card_size)
-			{
-				// FIXME
-				err = 0xFFFF;
-				return err;
-			}
 		}
 	}
 
 	state = HDD_OK;
 	return 0;
+}
+
+void hdd_contiguous_check(void)
+{
+	static uint8_t cont_hdd_id;
+	static FSCONTIG cc;
+
+	FRESULT res;
+
+	// block further calls once configured
+	if (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_HDD_CHECKED) return;
+
+	/*
+	 * If this function is called without this flag set, that is a directive
+	 * for starting the hard drive check. Set it up.
+	 */
+	if (! (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_HDD_CHECKING))
+	{
+		GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_HDD_CHECKING;
+		cont_hdd_id = 255;
+		cc.fsz = 0;
+	}
+
+	/*
+	 * If the remaining filesize is zero, advance to next volume that needs
+	 * sizing. Otherwise, perform the per-cycle check.
+	 */
+	if (cc.fsz == 0)
+	{
+		while (cont_hdd_id < HARD_DRIVE_COUNT || cont_hdd_id == 255)
+		{
+			// check volume for candidacy
+			// deliberate overflow from setup block for 1st loop
+			cont_hdd_id++;
+			if (config_hdd[cont_hdd_id].id != 255
+					&& config_hdd[cont_hdd_id].filename != NULL
+					&& config_hdd[cont_hdd_id].mode == HDD_MODE_FAST)
+			{
+				cc.fp = &(config_hdd[cont_hdd_id].fp);
+				res = f_contiguous_setup(cc.fp, &cc);
+				if (res)
+				{
+					// skip this volume
+					debug_dual(DEBUG_HDD_CHECK_REJECTED, cont_hdd_id);
+					cont_hdd_id++;
+					continue;
+				}
+				else
+				{
+					// stop the loop; next time through we'll process
+					break;
+				}
+			}
+		}
+		if (cont_hdd_id >= HARD_DRIVE_COUNT)
+		{
+			// checks complete
+			GLOBAL_CONFIG_REGISTER &= ~GLOBAL_FLAG_HDD_CHECKING;
+			GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_HDD_CHECKED;
+		}
+	}
+	else
+	{
+		res = f_contiguous(&cc);
+		if (res)
+		{
+			// error, file must not be contiguous
+			// this will get picked up on during next call
+			debug_dual(DEBUG_HDD_CHECK_FAILED, cont_hdd_id);
+			cc.fsz = 0;
+		}
+		else if (cc.fsz == 0)
+		{
+			// success, file is contiguous!
+			debug_dual(DEBUG_HDD_CHECK_SUCCESS, cont_hdd_id);
+			// find the starting sector for the file
+			// see http://elm-chan.org/fsw/ff/doc/expand.html
+			config_hdd[cont_hdd_id].start = cc.fp->obj.fs->database
+					+ cc.fp->obj.fs->csize * (cc.fp->obj.sclust - 2);
+		}
+	}
 }
 
 HDDSTATE hdd_state(void)

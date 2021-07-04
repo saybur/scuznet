@@ -72,6 +72,7 @@ static void main_handle(void)
 
 	link_check_rx();
 	net_transmit_check();
+	hdd_contiguous_check();
 }
 
 int main(void)
@@ -125,6 +126,7 @@ int main(void)
 	led_off();
 
 	// and continue main handler function
+	debug(DEBUG_MAIN_READY);
 	while (1)
 	{
 		main_handle();

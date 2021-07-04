@@ -31,7 +31,8 @@
  * for each symbol.
  */
 #define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10 // 1
-#define DEBUG_MAIN_RESET                          0x1F // 0
+#define DEBUG_MAIN_RESET                          0x1E // 0
+#define DEBUG_MAIN_READY                          0x1F // 0
 #define DEBUG_LOGIC_BAD_LUN                       0x50 // 0
 #define DEBUG_LOGIC_BAD_CMD                       0x52 // 1
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53 // 0
@@ -53,6 +54,9 @@
 #define DEBUG_HDD_MEM_WRITE_ERROR                 0x93 // 1
 #define DEBUG_HDD_INVALID_OPERATION               0x94 // 0
 #define DEBUG_HDD_SIZE_EXCEEDED                   0x95 // 0
+#define DEBUG_HDD_CHECK_REJECTED                  0x96 // 1
+#define DEBUG_HDD_CHECK_FAILED                    0x97 // 1
+#define DEBUG_HDD_CHECK_SUCCESS                   0x98 // 1
 #define DEBUG_LINK_TX_REQUESTED                   0xA0 // 0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4 // 0
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5 // 0

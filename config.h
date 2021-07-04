@@ -55,9 +55,11 @@
  * Default value, and the location of status flags within the global
  * configuration register.
  */
-#define GLOBAL_FLAG_PARITY      _BV(0)
-#define GLOBAL_FLAG_DEBUG       _BV(1)
-#define GLOBAL_FLAG_VERBOSE     _BV(2)
+#define GLOBAL_FLAG_PARITY               _BV(0)
+#define GLOBAL_FLAG_DEBUG                _BV(1)
+#define GLOBAL_FLAG_VERBOSE              _BV(2)
+#define GLOBAL_FLAG_HDD_CHECKING         _BV(3)
+#define GLOBAL_FLAG_HDD_CHECKED          _BV(4)
 
 /*
  * The number of virtual hard drives that can be supported simultaneously.

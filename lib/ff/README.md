@@ -75,14 +75,41 @@ a check in the `disk.c` implementation.
 
 ### Contiguous File Checking
 
-The following function has been added:
+The following functions have been added, along with a supporting struct:
 
 ```
-FRESULT f_contiguous (FIL* fp, BYTE* cont);
+FRESULT f_contiguous_setup (FIL* fp, FSCONTIG* cc);
+FRESULT f_contiguous (FSCONTIG* cc);
 ```
 
-This is from the example code `test_contiguous_file()` available
+These are derived from the example code `test_contiguous_file()` available
 [here](http://elm-chan.org/fsw/ff/res/app5.c).
+
+They follow the same algorithm, but execute the loop in a way that allows the
+check to be broken out of and back into. This is important, mainly to allow
+device selection to continue while the check is being executed.
+
+Here's a usage example where `FIL* fp` is already open:
+
+```
+FSCONTIG cc;
+
+res = f_contig_setup(fp, &cc);
+if (res) ERROR(res);
+while (cc.fsz && ! res)
+{
+	f_contig(&cc);
+}
+if (fsz == 0 && ! res)
+{
+	// file is contiguous
+}
+```
+
+The setup call will get the variables in the correct position, then `f_contig`
+should be repeatedly called until `cc.fsz` shrinks to zero with no errors. If
+the file is determined to be non-contiguous, `f_config` will return
+`FR_MISALIGNED`.
 
 FatFs Performance Notes
 -----------------------

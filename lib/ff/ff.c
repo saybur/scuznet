@@ -4683,36 +4683,51 @@ FRESULT f_lseek (
 / Test if the file is contiguous                                        /
 /----------------------------------------------------------------------*/
 
-FRESULT f_contiguous (
-    FIL* fp,    /* [IN]  Open file object to be checked */
-    BYTE* cont   /* [OUT] 1:Contiguous, 0:Fragmented or zero-length */
+FRESULT f_contiguous_setup (
+	FIL* fp,
+	FSCONTIG* cc
 )
 {
-    DWORD clst, clsz, step;
-    FSIZE_t fsz;
-    FRESULT fr;
+	FRESULT fr;
 
+	cc->fp = fp;
+	cc->prev = 0;
 
-    *cont = 0;
     fr = f_rewind(fp);              /* Validates and prepares the file */
     if (fr != FR_OK) return fr;
 
 #if FF_MAX_SS == FF_MIN_SS
-    clsz = (DWORD)fp->obj.fs->csize * FF_MAX_SS;    /* Cluster size */
+    cc->clsz = (DWORD)fp->obj.fs->csize * FF_MAX_SS;    /* Cluster size */
 #else
-    clsz = (DWORD)fp->obj.fs->csize * fp->obj.fs->ssize;
+    cc->clsz = (DWORD)fp->obj.fs->csize * fp->obj.fs->ssize;
 #endif
-    fsz = f_size(fp);
-    if (fsz > 0) {
-        clst = fp->obj.sclust - 1;  /* A cluster leading the first cluster for first test */
-        while (fsz) {
-            step = (fsz >= clsz) ? clsz : (DWORD)fsz;
-            fr = f_lseek(fp, f_tell(fp) + step);    /* Advances file pointer a cluster */
-            if (fr != FR_OK) return fr;
-            if (clst + 1 != fp->clust) break;       /* Is not the cluster next to previous one? */
-            clst = fp->clust; fsz -= step;          /* Get current cluster for next test */
-        }
-        if (fsz == 0) *cont = 1;    /* All done without fail? */
+    cc->fsz = f_size(fp);
+    if (cc->fsz > 0) {
+        cc->clst = fp->obj.sclust - 1;  /* A cluster leading the first cluster for first test */
+    } else {
+		return FR_INVALID_OBJECT;
+	}
+    return FR_OK;
+}
+
+FRESULT f_contiguous (
+    FSCONTIG* cc
+)
+{
+    DWORD step;
+    FRESULT fr;
+
+    if (cc->fsz > 0) {
+		f_lseek(cc->fp, cc->prev);
+        step = ((cc->fsz) >= cc->clsz) ? cc->clsz : (DWORD) (cc->fsz);
+        cc->prev = f_tell(cc->fp) + step;
+        fr = f_lseek(cc->fp, cc->prev);    /* Advances file pointer a cluster */
+        if (fr != FR_OK) return fr;
+
+        /* Is not the cluster next to previous one? */
+        if (cc->clst + 1 != cc->fp->clust) return FR_MISALIGNED;
+        /* Get current cluster for next test */
+        cc->clst = cc->fp->clust; cc->fsz -= step;
     }
 
     return FR_OK;

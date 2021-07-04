@@ -299,6 +299,16 @@ typedef enum {
 } FRESULT;
 
 
+/* Ongoing continuity check object (FSCONTIG) */
+
+typedef struct {
+	FIL* fp;			/* File being worked on */
+	DWORD clst;			/* Current cluster number */
+	DWORD clsz;			/* Cluster size */
+	FSIZE_t fsz;		/* Remaining file size to check */
+	LBA_t prev;			/* The previous f_lseek() value */
+} FSCONTIG;
+
 
 /*--------------------------------------------------------------*/
 /* FatFs module application interface                           */
@@ -310,7 +320,8 @@ FRESULT f_mread (FIL* fp, BYTE (*func)(BYTE*), UINT str, UINT* sr);
 FRESULT f_write (FIL* fp, const void* buff, UINT btw, UINT* bw);	/* Write data to the file */
 FRESULT f_mwrite (FIL* fp, BYTE (*func)(BYTE*), UINT stw, UINT* sw);
 FRESULT f_lseek (FIL* fp, FSIZE_t ofs);								/* Move file pointer of the file object */
-FRESULT f_contiguous (FIL* fp, BYTE* cont);							/* Tests if a file is contiguous or not */
+FRESULT f_contiguous_setup (FIL* fp, FSCONTIG* cc);					/* Sets up below call */
+FRESULT f_contiguous (FSCONTIG* cc);								/* Tests if a file is contiguous or not */
 FRESULT f_truncate (FIL* fp);										/* Truncate the file */
 FRESULT f_sync (FIL* fp);											/* Flush cached data of the writing file */
 FRESULT f_opendir (DIR* dp, const TCHAR* path);						/* Open a directory */

@@ -67,6 +67,16 @@ typedef enum {
 uint16_t hdd_init(void);
 
 /*
+ * Checks for volume continuity among those marked for fast mode. This needs to
+ * be called as part of the main loop. Each invocation, it will perform one
+ * step of the check, until eventually it completes all checks, after which it
+ * will begin returning immediately.
+ * 
+ * Should not be invoked until hdd_init() returns correctly.
+ */
+void hdd_contiguous_check(void);
+
+/*
  * Provides the current state of the hard drive subsystem.
  */
 HDDSTATE hdd_state(void);
