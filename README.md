@@ -26,21 +26,23 @@ which for the most part has similar limitations.
 
 # Device Configuration
 
-The supplied memory card should be FAT32 formatted (exFAT is not currently
-supported). On boot the firmware will look for `scuznet.ini` on the card to
-configure itself. See the example file in the repository for more information.
+The supplied memory card should be FAT32 formatted (exFAT is supported only on
+ATxmega128A3U and larger microcontrollers). On boot the firmware will look for
+`scuznet.ini` on the card to configure itself. See the example file in the
+repository for a starting template and more information on configuration.
 
 When compiling, verify that -DHW_VXXX in the Makefile is replaced with the
 appropriate hardware revision.
 
-The virtual hard drive can be formatted within class Mac OS using a variety of
-era-appropriate SCSI tools. Patched versions of *HD SC Setup* are known to
+The virtual hard drive can be formatted within classic Mac OS using a variety
+of era-appropriate SCSI tools. Patched versions of *HD SC Setup* are known to
 work correctly.
 
 # Error Reporting
 
-If a runtime error occurs, the device will show a series of LED flashes.
-Consult the following table to determine what the issue is.
+If a critical runtime error occurs, the device will show a series of long LED
+flashes, followed by an optional number of short LED flashes. Consult the
+following table to determine what the issue is.
 
 | Long # | Short # | Issue                                                   |
 | ------ | ------- | ------------------------------------------------------- |
