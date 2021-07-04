@@ -430,7 +430,6 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 		// for the XX=80, all I have ever seen is where LLLL = PPPP
 		phy_phase(PHY_PHASE_DATA_OUT);
 		for (uint8_t i = 0; i < 4; i++) phy_data_ask();
-		length -= 8;
 	}
 
 	link_send_packet(length);
@@ -548,7 +547,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	if (! net_pending())
 	{
 		// send "No Packets" message
-		debug(DEBUG_LINK_RX_NO_DATA);
+		// debug(DEBUG_LINK_RX_NO_DATA);
 		phy_phase(PHY_PHASE_DATA_IN);
 		for (uint8_t i = 0; i < 6; i++)
 		{
