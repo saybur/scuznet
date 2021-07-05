@@ -60,6 +60,7 @@
 #define GLOBAL_FLAG_VERBOSE              _BV(2)
 #define GLOBAL_FLAG_HDD_CHECKING         _BV(3)
 #define GLOBAL_FLAG_HDD_CHECKED          _BV(4)
+#define GLOBAL_FLAG_SELFTEST             _BV(5)
 
 /*
  * The number of virtual hard drives that can be supported simultaneously.

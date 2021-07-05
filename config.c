@@ -64,6 +64,14 @@ static int config_handler(
 			}
 			return 1;
 		}
+		else if (strcmp(name, "selftest") == 0)
+		{
+			if (strcmp(value, "yes") == 0)
+			{
+				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_SELFTEST;
+			}
+			return 1;
+		}
 		else
 		{
 			return 0;

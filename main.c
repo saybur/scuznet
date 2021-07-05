@@ -30,6 +30,7 @@
 #include "logic.h"
 #include "net.h"
 #include "phy.h"
+#include "test.h"
 
 static FATFS fs;
 
@@ -107,6 +108,16 @@ int main(void)
 	// read the main configuration file off the card
 	uint8_t target_masks;
 	config_read(&target_masks);
+
+	// if we're executing a self-test, branch off the usual startup here
+	if (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_SELFTEST)
+	{
+		test_check();
+		// the above call should never return, but in case it does
+		// we should prevent further program execution
+		while (1) {};
+		return 0;
+	}
 
 	// complete setup
 	phy_init(target_masks);

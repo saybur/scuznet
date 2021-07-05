@@ -117,6 +117,11 @@
 #define phy_is_atn_asserted()   (PHY_PORT_R_ATN.IN & PHY_PIN_R_ATN)
 #define phy_is_ack_asserted()   (PHY_PORT_R_ACK.IN & PHY_PIN_R_ACK)
 
+// expose the reverse table for use in the testing code
+#ifdef PHY_PORT_DATA_IN_REVERSED
+extern const __flash uint8_t phy_reverse_table[];
+#endif
+
 /*
  * Initalizes the SCSI PHY, setting everything to defaults. This needs to be
  * invoked before any other calls to the SCSI PHY system.

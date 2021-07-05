@@ -21,11 +21,6 @@
 #include "config.h"
 #include "debug.h"
 
-// the LED on and off time for each flash, in milliseconds
-#define LONG_FLASH_DELAY        250
-#define SHORT_FLASH_DELAY       100
-#define BREAK_DELAY             500
-
 void fatal(uint8_t lflash, uint8_t sflash)
 {
 	// disable all interrupts
@@ -48,23 +43,23 @@ void fatal(uint8_t lflash, uint8_t sflash)
 
 	// begin flash pattern
 	led_off();
-	_delay_ms(BREAK_DELAY);
+	_delay_ms(LED_BREAK);
 	while (1)
 	{
 		for (uint8_t i = 0; i < lflash; i++)
 		{
 			led_on();
-			_delay_ms(LONG_FLASH_DELAY);
+			_delay_ms(LED_LONG_FLASH);
 			led_off();
-			_delay_ms(LONG_FLASH_DELAY);
+			_delay_ms(LED_LONG_FLASH);
 		}
 		for (uint8_t i = 0; i < sflash; i++)
 		{
 			led_on();
-			_delay_ms(SHORT_FLASH_DELAY);
+			_delay_ms(LED_SHORT_FLASH);
 			led_off();
-			_delay_ms(SHORT_FLASH_DELAY);
+			_delay_ms(LED_SHORT_FLASH);
 		}
-		_delay_ms(BREAK_DELAY);
+		_delay_ms(LED_BREAK);
 	}
 }

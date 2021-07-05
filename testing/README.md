@@ -1,6 +1,9 @@
 Board Testing
 =============
 
+**THIS IS DEPRECATED AND WILL BE MOVED TO THE WIKI SOON**. Instead, use
+`selftest=yes`.
+
 This is a special routine that can be flashed to a scuznet board, to help
 diagnose problems with shorted pins and the like.
 

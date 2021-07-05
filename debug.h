@@ -97,6 +97,11 @@
 #define FATAL_BROWNOUT                            7
 #define FATAL_MEM_MOUNT_FAILED                    8
 
+// the LED on and off time for each flash, in milliseconds
+#define LED_LONG_FLASH                            500
+#define LED_SHORT_FLASH                           200
+#define LED_BREAK                                 1000
+
 // LED control macros
 #define led_on()              LED_PORT.DIR |= LED_PIN;
 #define led_off()             LED_PORT.DIR &= ~LED_PIN;
