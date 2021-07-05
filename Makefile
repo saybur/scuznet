@@ -19,7 +19,7 @@ AVRDUDE_FLAGS := -p $(MCU) -c $(PROGRAMMER) -P usb
 
 MAIN = program
 SRCS = config.c debug.c disk.c enc.c net.c init.c phy.c logic.c hdd.c link.c \
-		lib/ff/ff.c lib/ff/ffunicode.c lib/inih/ini.c main.c
+		test.c lib/ff/ff.c lib/ff/ffunicode.c lib/inih/ini.c main.c
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all
