@@ -1,14 +1,14 @@
 scuznet
 =======
 
-Open source hardware emulating a Nuvolink SCSI to Ethernet adapter, for use
-with vintage Macintosh computers.
+Open source hardware emulating SCSI hard drives and an Ethernet adapter, for
+use with vintage Macintosh computers.
 
 # Status
 
-The firmware is at an early alpha stage. There are many things that are known
-to not work correctly, and there are likely a large number of other bugs that
-have yet to be identified and/or fixed.
+The firmware is at a beta stage. There are things that are known to not work
+correctly, and there are likely a large number of other bugs that have yet to
+be identified and/or fixed.
 
 If you encounter problems, please open a new issue.
 
