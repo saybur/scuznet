@@ -53,6 +53,7 @@ void fatal(uint8_t lflash, uint8_t sflash)
 			led_off();
 			_delay_ms(LED_LONG_FLASH);
 		}
+		_delay_ms(LED_BREAK);
 		for (uint8_t i = 0; i < sflash; i++)
 		{
 			led_on();
