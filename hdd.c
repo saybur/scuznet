@@ -1017,8 +1017,9 @@ void hdd_contiguous_check(void)
 				debug_dual(DEBUG_HDD_CHECK_FORCED, cont_hdd_id);
 				// find the starting sector for the file
 				// see http://elm-chan.org/fsw/ff/doc/expand.html
-				config_hdd[cont_hdd_id].lba = cc.fp->obj.fs->database
-						+ cc.fp->obj.fs->csize * (cc.fp->obj.sclust - 2);
+				FIL* fp = &(config_hdd[cont_hdd_id].fp);
+				config_hdd[cont_hdd_id].lba = fp->obj.fs->database
+						+ fp->obj.fs->csize * (fp->obj.sclust - 2);
 				// and advance to next volume
 				cont_hdd_id++;
 			}
