@@ -276,13 +276,13 @@ static void hdd_cmd_read()
 
 		uint8_t res = 255;
 		uint16_t act_len = 0;
-		if (config_hdd[id].start > 0) // low-level access
+		if (config_hdd[id].lba > 0) // low-level access
 		{
-			uint32_t offset = config_hdd[id].start + op.lba;
+			uint32_t offset = config_hdd[id].lba + op.lba;
 			res = disk_read_multi(0, phy_data_offer_block, offset, op.length);
 			if (! res) act_len = op.length;
 		}
-		else if (config_hdd[id].filename != NULL) // access via FAT
+		else // access via FAT
 		{
 			// move to correct sector
 			if (! hdd_seek(op.lba)) return;
@@ -339,13 +339,13 @@ static void hdd_cmd_write()
 
 		uint8_t res = 255;
 		uint16_t act_len = 0;
-		if (config_hdd[id].start > 0) // low-level access
+		if (config_hdd[id].lba > 0) // low-level access
 		{
-			uint32_t offset = config_hdd[id].start + op.lba;
+			uint32_t offset = config_hdd[id].lba + op.lba;
 			res = disk_write_multi(0, phy_data_ask_block, offset, op.length);
 			if (! res) act_len = op.length;
 		}
-		else if (config_hdd[id].filename != NULL) // access via FAT
+		else // access via FAT
 		{
 			// move to correct sector
 			if (! hdd_seek(op.lba)) return;
@@ -841,27 +841,17 @@ static void hdd_cmd_seek()
 		}
 	}
 
-	if (config_hdd[id].start > 0) // low-level access
+	if (config_hdd[id].lba > 0) // low-level access
 	{
 		/*
 		 * Consider native access to have "free" seeks due to the very low card
 		 * seek time, so just do nothing here and pretend to have seeked.
 		 */
 	}
-	else if (config_hdd[id].filename != NULL) // access via FAT
+	else // access via FAT
 	{
 		// move to correct sector
 		if (! hdd_seek(op.lba)) return;
-	}
-	else
-	{
-		// shouldn't be able to get here, this is probably a programming error
-		debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, 0xFF);
-			logic_set_sense(SENSE_KEY_HARDWARE_ERROR,
-					SENSE_DATA_NO_INFORMATION);
-			logic_status(LOGIC_STATUS_CHECK_CONDITION);
-			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
-		return;
 	}
 
 	logic_status(LOGIC_STATUS_GOOD);
@@ -884,9 +874,16 @@ uint16_t hdd_init(void)
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		err = (i + 1) << 8;
-		if (config_hdd[i].id != 255 && config_hdd[i].filename != NULL)
+		if (config_hdd[i].id != 255)
 		{
 			fp = &(config_hdd[i].fp);
+
+			// file should be defined, but double check anyway
+			if (config_hdd[i].filename == NULL)
+			{
+				err += (uint8_t) FR_INT_ERR;
+				return err;
+			}
 
 			/*
 			 * Verify the file exists. If it does not exist, we may have been
@@ -1036,7 +1033,7 @@ void hdd_contiguous_check(void)
 			debug_dual(DEBUG_HDD_CHECK_SUCCESS, cont_hdd_id);
 			// find the starting sector for the file
 			// see http://elm-chan.org/fsw/ff/doc/expand.html
-			config_hdd[cont_hdd_id].start = cc.fp->obj.fs->database
+			config_hdd[cont_hdd_id].lba = cc.fp->obj.fs->database
 					+ cc.fp->obj.fs->csize * (cc.fp->obj.sclust - 2);
 		}
 	}
@@ -1056,6 +1053,8 @@ uint8_t hdd_main(uint8_t hdd_id)
 	id = hdd_id;
 	logic_start(id + 1, 1); // logic ID 0 for the link device, hence +1
 	if (! logic_command(cmd)) return 1; // takes care of disconnection on fail
+
+	debug_dual(0xFE, cmd[0]);
 
 	/*
 	 * If there is a subsystem problem, we prevent further calls to commands,

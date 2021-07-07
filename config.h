@@ -95,8 +95,8 @@ typedef enum {
 typedef struct HDDConfig_t {
 	uint8_t id;                 // disabled when set to 255
 	uint8_t mask;               // the bitmask for the above ID
-	char* filename;             // if !=NULL, FAT filename for volume
-	uint32_t start;	            // if !=0, start sector for raw volumes
+	char* filename;             // filename for volume image
+	uint32_t lba;	            // if !=0, start LBA for direct volumes
 	uint32_t size;              // size of HDD in sectors
 	FIL fp;
 	HDDMODE mode;
