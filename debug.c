@@ -23,8 +23,8 @@
 
 void fatal(uint8_t lflash, uint8_t sflash)
 {
-	// disable all interrupts
-	PMIC.CTRL = 0;
+	// disable all but high-level (/RST) interrupts
+	PMIC.CTRL = PMIC_HILVLEN_bm;
 	// disable the watchdog timer
 	__asm__ __volatile__(
 		"ldi r24, %0"		"\n\t"
