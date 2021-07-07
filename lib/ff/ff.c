@@ -4691,7 +4691,6 @@ FRESULT f_contiguous_setup (
 	FRESULT fr;
 
 	cc->fp = fp;
-	cc->prev = 0;
 
     fr = f_rewind(fp);              /* Validates and prepares the file */
     if (fr != FR_OK) return fr;
@@ -4707,6 +4706,11 @@ FRESULT f_contiguous_setup (
     } else {
 		return FR_INVALID_OBJECT;
 	}
+
+	/* For the first check */
+	cc->step = ((cc->fsz) >= cc->clsz) ? cc->clsz : (DWORD) (cc->fsz);
+	cc->seek = f_tell(cc->fp) + cc->step;
+
     return FR_OK;
 }
 
@@ -4714,20 +4718,16 @@ FRESULT f_contiguous (
     FSCONTIG* cc
 )
 {
-    DWORD step;
-    FRESULT fr;
+	FRESULT fr;
 
-    if (cc->fsz > 0) {
-		f_lseek(cc->fp, cc->prev);
-        step = ((cc->fsz) >= cc->clsz) ? cc->clsz : (DWORD) (cc->fsz);
-        cc->prev = f_tell(cc->fp) + step;
-        fr = f_lseek(cc->fp, cc->prev);    /* Advances file pointer a cluster */
-        if (fr != FR_OK) return fr;
+	if (cc->fsz > 0) {
+		fr = f_lseek(cc->fp, cc->seek);    /* Advances file pointer a cluster */
+		if (fr != FR_OK) return fr;
+		if (cc->clst + 1 != cc->fp->clust) return FR_MISALIGNED;
+		cc->clst = cc->fp->clust; cc->fsz -= cc->step;
 
-        /* Is not the cluster next to previous one? */
-        if (cc->clst + 1 != cc->fp->clust) return FR_MISALIGNED;
-        /* Get current cluster for next test */
-        cc->clst = cc->fp->clust; cc->fsz -= step;
+		cc->step = (cc->fsz >= cc->clsz) ? cc->clsz : (DWORD) cc->fsz;
+		cc->seek = f_tell(cc->fp) + cc->step;
     }
 
     return FR_OK;

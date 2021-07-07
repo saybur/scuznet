@@ -306,7 +306,8 @@ typedef struct {
 	DWORD clst;			/* Current cluster number */
 	DWORD clsz;			/* Cluster size */
 	FSIZE_t fsz;		/* Remaining file size to check */
-	LBA_t prev;			/* The previous f_lseek() value */
+	LBA_t seek;			/* The f_lseek() value for the next call */
+	DWORD step;
 } FSCONTIG;
 
 
