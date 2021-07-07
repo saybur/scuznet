@@ -57,6 +57,7 @@
 #define DEBUG_HDD_CHECK_REJECTED                  0x96 // 1
 #define DEBUG_HDD_CHECK_FAILED                    0x97 // 1
 #define DEBUG_HDD_CHECK_SUCCESS                   0x98 // 1
+#define DEBUG_HDD_CHECK_FORCED                    0x99 // 1
 #define DEBUG_LINK_TX_REQUESTED                   0xA0 // 0
 #define DEBUG_LINK_SHORT_TX_START                 0xA4 // 0
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5 // 0

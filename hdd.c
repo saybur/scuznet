@@ -975,7 +975,7 @@ void hdd_contiguous_check(void)
 	if (! (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_HDD_CHECKING))
 	{
 		GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_HDD_CHECKING;
-		cont_hdd_id = 255;
+		cont_hdd_id = 0;
 		cc.fsz = 0;
 	}
 
@@ -985,17 +985,19 @@ void hdd_contiguous_check(void)
 	 */
 	if (cc.fsz == 0)
 	{
-		while (cont_hdd_id < HARD_DRIVE_COUNT || cont_hdd_id == 255)
+		while (cont_hdd_id < HARD_DRIVE_COUNT)
 		{
-			// check volume for candidacy
-			// deliberate overflow from setup block for 1st loop
-			cont_hdd_id++;
-			if (config_hdd[cont_hdd_id].id != 255
-					&& config_hdd[cont_hdd_id].filename != NULL
-					&& config_hdd[cont_hdd_id].mode == HDD_MODE_FAST)
+			// if this volume is not configured, move to the next one
+			if (config_hdd[cont_hdd_id].id == 255)
 			{
-				cc.fp = &(config_hdd[cont_hdd_id].fp);
-				res = f_contiguous_setup(cc.fp, &cc);
+				cont_hdd_id++;
+				continue;
+			}
+
+			// otherwise check for fast/forcefast modes
+			if (config_hdd[cont_hdd_id].mode == HDD_MODE_FAST)
+			{
+				res = f_contiguous_setup(&(config_hdd[cont_hdd_id].fp), &cc);
 				if (res)
 				{
 					// skip this volume
@@ -1009,7 +1011,25 @@ void hdd_contiguous_check(void)
 					break;
 				}
 			}
+			else if (config_hdd[cont_hdd_id].mode == HDD_MODE_FORCEFAST)
+			{
+				// user wants us to enable without checking
+				debug_dual(DEBUG_HDD_CHECK_FORCED, cont_hdd_id);
+				// find the starting sector for the file
+				// see http://elm-chan.org/fsw/ff/doc/expand.html
+				config_hdd[cont_hdd_id].lba = cc.fp->obj.fs->database
+						+ cc.fp->obj.fs->csize * (cc.fp->obj.sclust - 2);
+				// and advance to next volume
+				cont_hdd_id++;
+			}
+			else
+			{
+				// non-fast mode, skip this drive
+				cont_hdd_id++;
+			}
 		}
+
+		// stop further processing once we've exhausted all drives
 		if (cont_hdd_id >= HARD_DRIVE_COUNT)
 		{
 			// checks complete
@@ -1026,6 +1046,8 @@ void hdd_contiguous_check(void)
 			// this will get picked up on during next call
 			debug_dual(DEBUG_HDD_CHECK_FAILED, cont_hdd_id);
 			cc.fsz = 0;
+			// move to next drive
+			cont_hdd_id++;
 		}
 		else if (cc.fsz == 0)
 		{
@@ -1035,6 +1057,8 @@ void hdd_contiguous_check(void)
 			// see http://elm-chan.org/fsw/ff/doc/expand.html
 			config_hdd[cont_hdd_id].lba = cc.fp->obj.fs->database
 					+ cc.fp->obj.fs->csize * (cc.fp->obj.sclust - 2);
+			// move to next drive
+			cont_hdd_id++;
 		}
 	}
 }
