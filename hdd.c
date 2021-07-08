@@ -962,6 +962,7 @@ void hdd_contiguous_check(void)
 {
 	static uint8_t cont_hdd_id;
 	static FSCONTIG cc;
+	static FIL fp;
 
 	FRESULT res;
 
@@ -997,19 +998,34 @@ void hdd_contiguous_check(void)
 			// otherwise check for fast/forcefast modes
 			if (config_hdd[cont_hdd_id].mode == HDD_MODE_FAST)
 			{
-				res = f_contiguous_setup(&(config_hdd[cont_hdd_id].fp), &cc);
+				/*
+				 * Open a new pointer to the file. This violates the FatFs
+				 * rules at http://elm-chan.org/fsw/ff/doc/appnote.html#dup by
+				 * maintaining more than one open file pointer with FA_WRITE
+				 * enabled. However, since all access to the file is via
+				 * the special f_mread/f_mwrite objects there should be no use
+				 * of the data caches, and the file FAT table entries are never
+				 * modified, it *should* be safe to do this here.
+				 */
+				res = f_open(&fp, config_hdd[cont_hdd_id].filename, FA_READ);
 				if (res)
 				{
-					// skip this volume
 					debug_dual(DEBUG_HDD_CHECK_REJECTED, cont_hdd_id);
+					f_close(&fp);
 					cont_hdd_id++;
-					continue;
-				}
-				else
-				{
-					// stop the loop; next time through we'll process
+					// allow return, f_open() may have taken too much time
 					break;
 				}
+				res = f_contiguous_setup(&fp, &cc);
+				if (res)
+				{
+					debug_dual(DEBUG_HDD_CHECK_REJECTED, cont_hdd_id);
+					f_close(&fp);
+					cont_hdd_id++;
+				}
+
+				// stop the loop; next time through we'll process or skip
+				break;
 			}
 			else if (config_hdd[cont_hdd_id].mode == HDD_MODE_FORCEFAST)
 			{
@@ -1017,9 +1033,9 @@ void hdd_contiguous_check(void)
 				debug_dual(DEBUG_HDD_CHECK_FORCED, cont_hdd_id);
 				// find the starting sector for the file
 				// see http://elm-chan.org/fsw/ff/doc/expand.html
-				FIL* fp = &(config_hdd[cont_hdd_id].fp);
-				config_hdd[cont_hdd_id].lba = fp->obj.fs->database
-						+ fp->obj.fs->csize * (fp->obj.sclust - 2);
+				FIL* fp_ptr = &(config_hdd[cont_hdd_id].fp);
+				config_hdd[cont_hdd_id].lba = fp_ptr->obj.fs->database
+						+ fp_ptr->obj.fs->csize * (fp_ptr->obj.sclust - 2);
 				// and advance to next volume
 				cont_hdd_id++;
 			}
@@ -1048,6 +1064,7 @@ void hdd_contiguous_check(void)
 			debug_dual(DEBUG_HDD_CHECK_FAILED, cont_hdd_id);
 			cc.fsz = 0;
 			// move to next drive
+			f_close(&fp);
 			cont_hdd_id++;
 		}
 		else if (cc.fsz == 0)
@@ -1056,9 +1073,10 @@ void hdd_contiguous_check(void)
 			debug_dual(DEBUG_HDD_CHECK_SUCCESS, cont_hdd_id);
 			// find the starting sector for the file
 			// see http://elm-chan.org/fsw/ff/doc/expand.html
-			config_hdd[cont_hdd_id].lba = cc.fp->obj.fs->database
-					+ cc.fp->obj.fs->csize * (cc.fp->obj.sclust - 2);
+			config_hdd[cont_hdd_id].lba = fp.obj.fs->database
+					+ fp.obj.fs->csize * (fp.obj.sclust - 2);
 			// move to next drive
+			f_close(&fp);
 			cont_hdd_id++;
 		}
 	}
@@ -1078,8 +1096,6 @@ uint8_t hdd_main(uint8_t hdd_id)
 	id = hdd_id;
 	logic_start(id + 1, 1); // logic ID 0 for the link device, hence +1
 	if (! logic_command(cmd)) return 1; // takes care of disconnection on fail
-
-	debug_dual(0xFE, cmd[0]);
 
 	/*
 	 * If there is a subsystem problem, we prevent further calls to commands,
