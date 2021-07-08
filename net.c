@@ -271,6 +271,8 @@ void net_setup(uint8_t* mac)
 	enc_cmd_write(ENC_MACON1, ENC_MARXEN_bm);
 	enc_cmd_write(ENC_MACON3, ENC_PADCFG0_bm | ENC_TXCRCEN_bm);
 	enc_cmd_write(ENC_MACON4, ENC_DEFER_bm);
+	enc_cmd_write(ENC_MAMXFLL, 0xEE);
+	enc_cmd_write(ENC_MAMXFLH, 0x05); // MTU == 1518 (0x5EE)
 	enc_cmd_write(ENC_MABBIPG, 0x12);
 	enc_cmd_write(ENC_MAIPGL, 0x12);
 	enc_cmd_write(ENC_MAIPGH, 0x0C);
