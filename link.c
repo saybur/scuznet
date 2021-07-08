@@ -498,6 +498,20 @@ static uint16_t link_nuvo_message_out_post_rx(void)
 		// normal post-RX response, no action needed
 		return 0;
 	}
+	else if (message == LOGIC_MSG_DISCONNECT)
+	{
+		/*
+		 * Send a DISCONNECT of our own, hang up, and track the
+		 * duration to keep from reconnecting before we're allowed
+		 */
+		debug(DEBUG_LINK_DISCONNECT);
+		phy_phase(PHY_PHASE_MESSAGE_IN);
+		phy_data_offer(LOGIC_MSG_DISCONNECT);
+		phy_phase(PHY_PHASE_BUS_FREE);
+		PHY_TIMER_DISCON.CTRLFSET = TC_CMD_RESTART_gc;
+		PHY_TIMER_DISCON.INTFLAGS = PHY_TIMER_DISCON_OVF;
+		return 0;
+	}
 	else if (message == 0x01)
 	{
 		// extended message

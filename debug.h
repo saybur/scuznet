@@ -62,6 +62,7 @@
 #define DEBUG_LINK_SHORT_TX_START                 0xA4 // 0
 #define DEBUG_LINK_SHORT_TX_DONE                  0xA5 // 0
 #define DEBUG_LINK_INQUIRY                        0xA8 // 0
+#define DEBUG_LINK_DISCONNECT                     0xAB // 0
 #define DEBUG_LINK_UNKNOWN_MESSAGE                0xAC // 1
 #define DEBUG_LINK_UNKNOWN_EXTENDED_MESSAGE       0xAD // 1 + X
 #define DEBUG_LINK_FILTER                         0xAE // 1
