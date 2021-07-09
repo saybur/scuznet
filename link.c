@@ -359,8 +359,8 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 	}
 	else
 	{
+		debug_dual(DEBUG_LINK_FILTER, data[7]);
 		uint8_t v = data[7] & 0x80;
-		debug_dual(DEBUG_LINK_FILTER, v);
 		if (v)
 		{
 			// corresponds to 09:00:07:FF:FF:FF for the ENC28J60
@@ -368,13 +368,12 @@ static void link_cmd_nuvo_filter(uint8_t* cmd)
 			uint8_t filter = NET_FILTER_UNICAST
 					| NET_FILTER_BROADCAST
 					| NET_FILTER_HASH;
-			debug_dual(DEBUG_LINK_FILTER, filter);
 			net_set_filter(filter);
 		}
 		else
 		{
-			uint8_t filter = NET_FILTER_UNICAST;
-			debug_dual(DEBUG_LINK_FILTER, filter);
+			uint8_t filter = NET_FILTER_UNICAST
+					| NET_FILTER_BROADCAST;
 			net_set_filter(filter);
 		}
 	}
@@ -677,12 +676,7 @@ void link_init()
 			mac_rom[i] = config_enet.mac[i];
 			mac_dyn[i] = config_enet.mac[i];
 		}
-
-		if (config_enet.type == LINK_DAYNA)
-		{
-			// for this firmware, broadcast always on
-			net_set_filter(NET_FILTER_UNICAST | NET_FILTER_BROADCAST);
-		}
+		net_set_filter(NET_FILTER_UNICAST | NET_FILTER_BROADCAST);
 	}
 	else
 	{
