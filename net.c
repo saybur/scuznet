@@ -32,16 +32,13 @@
  * is, starting at 0x0000 and extending through 0xXXFF, where 0xXX is this
  * value. All remaining space is allocated to the transmit buffer.
  */
-#define NET_ERXNDH_VALUE        0x13
+#define NET_ERXNDH_VALUE        0x19
 
 /*
  * Defines the starting point where packets to be transmitted are stored.
- * There are two regions, each 1536 bytes in size reserved for this purpose.
- * They can be switched between in the transmit functions based on the provided
- * buffer selection value.
+ * There is one region, 1536 bytes in size reserved for this purpose.
  */
-#define NET_XMIT_BUF1           0x14
-#define NET_XMIT_BUF2           0x1A
+#define NET_XMIT_BUF            0x1A
 
 /*
  * Header for the received packet.
@@ -450,13 +447,21 @@ NETSTAT net_stream_read(uint16_t (*func)(USART_t*, uint16_t))
 
 NETSTAT net_stream_write(void (*func)(USART_t*, uint16_t), uint16_t length)
 {
+	/*
+	 * Ensure the previous transmission completed to avoid overwriting the
+	 * existing buffer.
+	 */
+	while (NET_FLAGS & NETFLAG_TXREQ)
+	{
+		net_transmit_check();
+	}
+
+	// begin write operation
 	net_lock();
 
-	// shift the write pointer to the free buffer
-	uint8_t txsel = (NET_FLAGS & NETFLAG_TXBUF);
-	uint8_t txh = txsel ? NET_XMIT_BUF1 : NET_XMIT_BUF2;
+	// reset the write pointer
 	enc_cmd_write(ENC_EWRPTL, 0x00);
-	enc_cmd_write(ENC_EWRPTH, txh);
+	enc_cmd_write(ENC_EWRPTH, NET_XMIT_BUF);
 	// setup write
 	enc_write_start();
 	// write the status byte
@@ -488,10 +493,6 @@ NETSTAT net_transmit(uint16_t length)
 	// reserve
 	net_lock();
 
-	// verify we're pointing to the free buffer
-	uint8_t txsel = (NET_FLAGS & NETFLAG_TXBUF);
-	uint8_t txh = txsel ? NET_XMIT_BUF1 : NET_XMIT_BUF2;
-
 	// per errata 12, reset TX to prevent stalled transmissions
 	enc_cmd_set(ENC_ECON1, ENC_TXRST_bm);
 	enc_cmd_clear(ENC_ECON1, ENC_TXRST_bm);
@@ -505,8 +506,8 @@ NETSTAT net_transmit(uint16_t length)
 	 * addition for the ending pointer.
 	 */
 	enc_cmd_write(ENC_ETXSTL, 0x00);
-	enc_cmd_write(ENC_ETXSTH, txh);
-	uint16_t end = (txh << 8) + length;
+	enc_cmd_write(ENC_ETXSTH, NET_XMIT_BUF);
+	uint16_t end = (NET_XMIT_BUF << 8) + length;
 	enc_cmd_write(ENC_ETXNDL, (uint8_t) end);
 	enc_cmd_write(ENC_ETXNDH, (uint8_t) (end >> 8));
 
@@ -515,7 +516,6 @@ NETSTAT net_transmit(uint16_t length)
 	NET_FLAGS |= NETFLAG_TXREQ;
 
 	// reset the information for next time
-	txsel ? (NET_FLAGS &= ~NETFLAG_TXBUF) : (NET_FLAGS |= NETFLAG_TXBUF);
 	net_timer_reset();
 
 	// done
