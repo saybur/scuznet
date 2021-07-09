@@ -65,6 +65,7 @@ typedef enum {
  * NETFLAG_TXUSED: set once the first packet has been sent
  */
 #define NETFLAG_PKT_PENDING     _BV(1)
+#define NETFLAG_TXBUF           _BV(2)
 #define NETFLAG_TXREQ           _BV(3)
 
 /*
