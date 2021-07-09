@@ -268,9 +268,10 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 /*
  * After a DISCONNECT message is received, wait this many Fclk/64 clocks before
- * attempting to reselect the initiator.
+ * attempting to reselect the initiator. This disconnects for 5ms, which is
+ * significantly longer than the 200us required.
  */
-#define PHY_TIMER_DISCON_DELAY  125
+#define PHY_TIMER_DISCON_DELAY  2480
 
 /*
  * ============================================================================
