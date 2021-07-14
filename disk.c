@@ -91,6 +91,10 @@
 static volatile uint8_t card_status = STA_NOINIT;
 static uint8_t card_type;
 
+#define DISK_BUFFER_SIZE 516
+static uint8_t buff_a[DISK_BUFFER_SIZE];
+static uint8_t buff_b[DISK_BUFFER_SIZE];
+
 /*
  * Sends a byte to the memory card, returning the response.
  * 
@@ -450,11 +454,9 @@ DRESULT disk_read_multi (
 	if (count == 1)
 	{
 		// we treat single-sector reads like a normal FIFO call
-		void* buff = malloc(512);
-		if (buff != NULL
-				&& mem_cmd(CMD17, sector) == 0
-				&& mem_bulk_read(buff, 512)
-				&& func(buff))
+		if (mem_cmd(CMD17, sector) == 0
+				&& mem_bulk_read(buff_a, 512)
+				&& func(buff_a))
 		{
 			count = 0;
 		}
@@ -463,14 +465,11 @@ DRESULT disk_read_multi (
 			debug(DEBUG_MEM_READ_SINGLE_FAILED);
 			res = RES_ERROR;
 		}
-		free(buff);
 	}
 	else
 	{
-		void* buff_a = malloc(514);
-		void* buff_b = malloc(514);
 		uint8_t cmdres = mem_cmd(CMD18, sector);
-		if (buff_a != NULL && buff_b != NULL && cmdres == 0)
+		if (cmdres == 0)
 		{
 			uint8_t bufsel = 0;
 			uint8_t* cbuf = buff_a;
@@ -574,10 +573,6 @@ DRESULT disk_read_multi (
 			debug_dual(DEBUG_MEM_READ_MUL_CMD_FAILED, cmdres);
 			res = RES_ERROR;
 		}
-
-		// clean up
-		free(buff_a);
-		free(buff_b);
 	}
 	mem_deselect();
 
@@ -641,22 +636,17 @@ DRESULT disk_write_multi (
 	if (count == 1)
 	{
 		// we treat single-sector writes like a normal FIFO call
-		void* buff = malloc(512);
-		if (buff != NULL)
+		if (func(buff_a))
 		{
-			if (func(buff))
+			if ((mem_cmd(CMD24, sector) == 0) && mem_bulk_write(buff_a, 0xFE, 512))
 			{
-				if ((mem_cmd(CMD24, sector) == 0) && mem_bulk_write(buff, 0xFE, 512))
-				{
-					count = 0;
-				}
-			}
-			else
-			{
-				count = 1;
+				count = 0;
 			}
 		}
-		free(buff);
+		else
+		{
+			count = 1;
+		}
 	}
 	else
 	{
@@ -667,20 +657,17 @@ DRESULT disk_write_multi (
 			// http://elm-chan.org/docs/mmc/mmc_e.html#dataxfer
 			// diagram indicates need to have at least 1 byte before data
 			mem_send(0xFF);
-						
-			// TODO verify malloc() does not fail
+
 			uint8_t bufsel = 1;
 			uint8_t func_res;
-			uint8_t* buff_a = (uint8_t*) malloc(516);
-			*buff_a = 0xFC;
-			*(buff_a + 513) = 0xFF;
-			*(buff_a + 514) = 0xFF;
-			*(buff_a + 515) = 0xFF;
-			uint8_t* buff_b = (uint8_t*) malloc(516);
-			*buff_b = 0xFC;
-			*(buff_b + 513) = 0xFF;
-			*(buff_b + 514) = 0xFF;
-			*(buff_b + 515) = 0xFF;
+			buff_a[0] = 0xFC;
+			buff_a[513] = 0xFF;
+			buff_a[514] = 0xFF;
+			buff_a[515] = 0xFF;
+			buff_b[0] = 0xFC;
+			buff_b[513] = 0xFF;
+			buff_b[514] = 0xFF;
+			buff_b[515] = 0xFF;
 			uint8_t* cbuf;
 			MEM_GPIOR = 0x05; // allow first itr to pass
 
@@ -749,8 +736,6 @@ DRESULT disk_write_multi (
 
 			// then send finalization and clean up
 			if (! mem_bulk_write(NULL, 0xFD, 0)) count = 1;
-			free(buff_a);
-			free(buff_b);
 		}
 	}
 	mem_deselect();
