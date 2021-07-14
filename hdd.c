@@ -267,6 +267,12 @@ static void hdd_cmd_read()
 			debug(DEBUG_HDD_READ_STARTING);
 			if (debug_verbose())
 			{
+				debug(DEBUG_HDD_LBA);
+				debug(op.lba >> 24);
+				debug(op.lba >> 16);
+				debug(op.lba >> 8);
+				debug(op.lba);
+				debug(DEBUG_HDD_LENGTH);
 				debug_dual(
 					(uint8_t) (op.length >> 8),
 					(uint8_t) op.length);
@@ -299,6 +305,7 @@ static void hdd_cmd_read()
 				debug_dual(DEBUG_HDD_MEM_READ_ERROR, res);
 				if (debug_verbose())
 				{
+					debug(DEBUG_HDD_LENGTH);
 					debug_dual(
 						(uint8_t) (act_len >> 8),
 						(uint8_t) act_len);
@@ -330,6 +337,12 @@ static void hdd_cmd_write()
 			debug(DEBUG_HDD_WRITE_STARTING);
 			if (debug_verbose())
 			{
+				debug(DEBUG_HDD_LBA);
+				debug(op.lba >> 24);
+				debug(op.lba >> 16);
+				debug(op.lba >> 8);
+				debug(op.lba);
+				debug(DEBUG_HDD_LENGTH);
 				debug_dual(
 					(uint8_t) (op.length >> 8),
 					(uint8_t) op.length);
@@ -362,6 +375,7 @@ static void hdd_cmd_write()
 				debug_dual(DEBUG_HDD_MEM_WRITE_ERROR, res);
 				if (debug_verbose())
 				{
+					debug(DEBUG_HDD_LENGTH);
 					debug_dual(
 						(uint8_t) (act_len >> 8),
 						(uint8_t) act_len);
@@ -832,6 +846,7 @@ static void hdd_cmd_seek()
 		debug(DEBUG_HDD_SEEK);
 		if (debug_verbose())
 		{
+			debug(DEBUG_HDD_LBA);
 			debug_dual(
 				(uint8_t) (op.lba >> 24),
 				(uint8_t) (op.lba >> 16));
@@ -1036,6 +1051,14 @@ void hdd_contiguous_check(void)
 				FIL* fp_ptr = &(config_hdd[cont_hdd_id].fp);
 				config_hdd[cont_hdd_id].lba = fp_ptr->obj.fs->database
 						+ fp_ptr->obj.fs->csize * (fp_ptr->obj.sclust - 2);
+				if (debug_verbose())
+				{
+					debug(DEBUG_HDD_LBA);
+					debug(config_hdd[cont_hdd_id].lba >> 24);
+					debug(config_hdd[cont_hdd_id].lba >> 16);
+					debug(config_hdd[cont_hdd_id].lba >> 8);
+					debug(config_hdd[cont_hdd_id].lba);
+				}
 				// and advance to next volume
 				cont_hdd_id++;
 			}
@@ -1075,6 +1098,14 @@ void hdd_contiguous_check(void)
 			// see http://elm-chan.org/fsw/ff/doc/expand.html
 			config_hdd[cont_hdd_id].lba = fp.obj.fs->database
 					+ fp.obj.fs->csize * (fp.obj.sclust - 2);
+			if (debug_verbose())
+			{
+				debug(DEBUG_HDD_LBA);
+				debug(config_hdd[cont_hdd_id].lba >> 24);
+				debug(config_hdd[cont_hdd_id].lba >> 16);
+				debug(config_hdd[cont_hdd_id].lba >> 8);
+				debug(config_hdd[cont_hdd_id].lba);
+			}
 			// move to next drive
 			f_close(&fp);
 			cont_hdd_id++;
