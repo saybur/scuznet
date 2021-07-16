@@ -85,6 +85,7 @@
 #define DEBUG_PHY_RESELECT_ARB_WON                0xD3 // 0
 #define DEBUG_PHY_RESELECT_ARB_INTERRUPTED        0xD4 // 0
 #define DEBUG_PHY_RESELECT_FINISHED               0xD5 // 0
+#define DEBUG_PHY_TIMED_OUT                       0xD6 // 0
 #define DEBUG_MEM_READ_SINGLE_FAILED              0xE0 // 0
 #define DEBUG_MEM_READ_MUL_CMD_FAILED             0xE1 // 1
 #define DEBUG_MEM_READ_MUL_FIRST_FAILED           0xE2 // 0

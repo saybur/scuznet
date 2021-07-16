@@ -272,6 +272,19 @@ static inline __attribute__((always_inline)) void phy_data_clear(void)
 	dbp_release();
 }
 
+/*
+ * Handles starting and stopping the PHY watchdog timer.
+ */
+static inline __attribute__((always_inline)) void phy_watchdog_start(void)
+{
+	PHY_TIMER_WATCHDOG.CTRLFSET = TC_CMD_RESTART_gc;
+	PHY_TIMER_WATCHDOG.CTRLA = TC_CLKSEL_DIV1024_gc;
+}
+static inline __attribute__((always_inline)) void phy_watchdog_stop(void)
+{
+	PHY_TIMER_WATCHDOG.CTRLA = TC_CLKSEL_OFF_gc;
+}
+
 void phy_init(uint8_t mask)
 {
 	PHY_REGISTER_PHASE = 0;
@@ -400,6 +413,12 @@ void phy_init(uint8_t mask)
 	 */
 	PHY_TIMER_DISCON.PER = PHY_TIMER_DISCON_DELAY;
 	PHY_TIMER_DISCON.CTRLA = TC_CLKSEL_DIV64_gc;
+
+	/*
+	 * Setup timer used to monitor REQ/ACK deadlocks and similar situations
+	 * when data flow on the bus has stopped.
+	 */
+	PHY_TIMER_WATCHDOG.INTCTRLA = TC_OVFINTLVL_LO_gc;
 }
 
 void phy_init_hold(void)
@@ -432,18 +451,22 @@ void phy_data_offer(uint8_t data)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
+	phy_watchdog_start();
 
 	while (phy_is_ack_asserted());
 	phy_data_set(data);
 	req_assert();
 	while (! phy_is_ack_asserted());
 	req_release();
+
+	phy_watchdog_stop();
 }
 
 uint8_t phy_data_offer_block(uint8_t* data)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
 	if (! phy_is_active()) return 0;
+	phy_watchdog_start();
 
 	for (uint16_t i = 0; i < 512; i++)
 	{
@@ -453,6 +476,8 @@ uint8_t phy_data_offer_block(uint8_t* data)
 		while (! phy_is_ack_asserted());
 		req_release();
 	}
+
+	phy_watchdog_stop();
 	return 1;
 }
 
@@ -460,6 +485,7 @@ uint16_t phy_data_offer_bulk(uint8_t* data, uint16_t len)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
 	if (! phy_is_active()) return 0;
+	phy_watchdog_start();
 
 	for (uint16_t i = 0; i < len; i++)
 	{
@@ -469,6 +495,8 @@ uint16_t phy_data_offer_bulk(uint8_t* data, uint16_t len)
 		while (! phy_is_ack_asserted());
 		req_release();
 	}
+
+	phy_watchdog_stop();
 	return len;
 }
 
@@ -479,6 +507,7 @@ uint16_t phy_data_offer_stream(USART_t* usart, uint16_t len)
 	if (! (PHY_REGISTER_PHASE & 0x01)) return len;
 	if (! phy_is_active()) return len;
 	if (len == 0) return len;
+	phy_watchdog_start();
 
 	// queue first byte
 	while (! (usart->STATUS & USART_DREIF_bm));
@@ -511,6 +540,7 @@ uint16_t phy_data_offer_stream(USART_t* usart, uint16_t len)
 	while (! phy_is_ack_asserted());
 	req_release();
 
+	phy_watchdog_stop();
 	return len;
 }
 
@@ -521,6 +551,7 @@ uint16_t phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 	if (! (PHY_REGISTER_PHASE & 0x01)) return len;
 	if (! phy_is_active()) return len;
 	if (len == 0) return len;
+	phy_watchdog_start();
 
 	// queue first byte
 	while (! (usart->STATUS & USART_DREIF_bm));
@@ -553,12 +584,14 @@ uint16_t phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 	while ((! phy_is_atn_asserted()) && (! phy_is_ack_asserted()));
 	req_release();
 
+	phy_watchdog_stop();
 	return len;
 }
 
 uint8_t phy_data_ask(void)
 {
 	if (! phy_is_active()) return 0;
+	phy_watchdog_start();
 
 	// wait for initiator to be ready
 	while (phy_is_ack_asserted());
@@ -577,6 +610,7 @@ uint8_t phy_data_ask(void)
 
 	// release /REQ, then we're done
 	req_release();
+	phy_watchdog_stop();
 	return data;
 }
 
@@ -585,6 +619,7 @@ uint8_t phy_data_ask_block(uint8_t* data)
 	uint8_t v;
 
 	if (! phy_is_active()) return 0;
+	phy_watchdog_start();
 
 	for (uint16_t i = 0; i < 512; i++)
 	{
@@ -599,6 +634,7 @@ uint8_t phy_data_ask_block(uint8_t* data)
 			data[i] = v;
 		#endif
 	}
+	phy_watchdog_stop();
 	return 1;
 }
 
@@ -607,6 +643,7 @@ uint16_t phy_data_ask_bulk(uint8_t* data, uint16_t len)
 	uint8_t v;
 
 	if (! phy_is_active()) return 0;
+	phy_watchdog_start();
 
 	for (uint16_t i = 0; i < len; i++)
 	{
@@ -622,6 +659,7 @@ uint16_t phy_data_ask_bulk(uint8_t* data, uint16_t len)
 		#endif
 	}
 
+	phy_watchdog_stop();
 	return len;
 }
 
@@ -633,6 +671,7 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 	// note that ISR has the opposite guard
 	if (! phy_is_active()) return;
 	if (len == 0) return;
+	phy_watchdog_start();
 
 	uint8_t not_first = 0;
 	do
@@ -671,6 +710,8 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 	// get the response to the previous byte
 	while (! (usart->STATUS & USART_RXCIF_bm));
 	usart->DATA;
+
+	phy_watchdog_stop();
 }
 
 void phy_phase(uint8_t new_phase)
@@ -1052,4 +1093,14 @@ ISR(PHY_ISR_RST_vect)
 		  "M" (RST_SWRST_bm), "i" (&(RST.CTRL))
 		: "r24"
 		);
+}
+
+/*
+ * Invoked after an extended period of time where there is no data transfer
+ * activity on the bus.
+ */
+ISR(PHY_TIMER_WATCHDOG_vect)
+{
+	// TODO placeholder
+	debug(DEBUG_PHY_TIMED_OUT);
 }

@@ -274,6 +274,13 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 #define PHY_TIMER_DISCON_DELAY  2480
 
 /*
+ * Timer used to track bus deadlock conditions and respond to situations where
+ * the REQ/ACK interlock has failed.
+ */
+#define PHY_TIMER_WATCHDOG      TCE1
+#define PHY_TIMER_WATCHDOG_vect TCE1_OVF_vect
+
+/*
  * ============================================================================
  *  
  *   CONFIGURATION CALLS
