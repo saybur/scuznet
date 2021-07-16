@@ -91,6 +91,8 @@
 #define DEBUG_MEM_READ_MUL_TIMEOUT                0xE3 // 1
 #define DEBUG_MEM_READ_MUL_FUNC_ERR               0xE4 // 0
 #define DEBUG_MEM_READ_MUL_DMA_ERR                0xE5 // 0
+#define DEBUG_MEM_READ_SOFT_ERROR                 0xE7 // 0
+#define DEBUG_MEM_DMA_UNDERFLOW                   0xE8 // 0
 #define DEBUG_FATAL                               0xEF // 2
 
 /*

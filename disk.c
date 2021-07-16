@@ -321,6 +321,39 @@ static uint8_t mem_cmd(uint8_t cmd, uint32_t arg)
 }
 
 /*
+ * Waits until ongoing DMA transactions are complete. Returns:
+ * 
+ * 0: success
+ * 1: read DMA channel underflow
+ * 
+ * Experience has shown that it is possible for the DMA read channel to get
+ * fewer USART bytes than are sent via the write channel. In theory, this is
+ * caused by a missed RXC trigger or SRAM access issue. To avoid causing a
+ * deadlock waiting for the read DMA to end, the system does the following:
+ * 
+ * 1) Waits for the write DMA channel to end,
+ * 2) Waits up to X tries for the read DMA channel to end,
+ * 3) If the read DMA channel is still not done, it is force-stopped.
+ * 
+ * Stopping the DMA channel early causes ERRIF to become set, which is how this
+ * timeout condition can be checked for.
+ */
+static void block_until_dma_done(void)
+{
+	uint8_t countdown = 255;
+	while (MEM_DMA_WRITE.CTRLA & DMA_CH_ENABLE_bm);
+	while ((MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm) && --countdown);
+	if (! countdown)
+	{
+		debug(DEBUG_MEM_DMA_UNDERFLOW);
+		MEM_DMA_READ.CTRLA &= ~DMA_CH_ENABLE_bm;
+		// this may take a bit to actually stop
+		countdown = 255;
+		while ((MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm) && --countdown);
+	}
+}
+
+/*
  * ============================================================================
  *   Public Functions
  * ============================================================================
@@ -437,19 +470,25 @@ DRESULT disk_read(
 	return count ? RES_ERROR : RES_OK;
 }
 
-DRESULT disk_read_multi (
-	BYTE pdrv,
+/*
+ * Operation invoked by disk_read_multi() to handle reading blocks of data off
+ * the memory card. This will return true if the read operation experienced a
+ * non-recoverable error.
+ * 
+ * The number of sectors actually read should be equal to the number of sectors
+ * provided, unless a soft error occurs. In that situation this function should
+ * be called again, offset appropriately to continue the read operation.
+ * 
+ * The act_count pointer is only incremented in this function.
+ */
+static uint8_t disk_read_blocks (
 	BYTE (*func)(BYTE*),
 	LBA_t sector,
-	UINT count
+	UINT count,
+	UINT* act_count
 )
 {
-	DRESULT res = RES_OK;
-
-	if (pdrv != 0) return RES_NOTRDY;
-	if (card_status & STA_NOINIT) return RES_NOTRDY;
-	if (! count) return RES_PARERR;
-	
+	uint8_t err = 0;
 	if (! (card_type & CT_BLOCK)) sector *= 512;
 	if (count == 1)
 	{
@@ -458,16 +497,18 @@ DRESULT disk_read_multi (
 				&& mem_bulk_read(buff_a, 512)
 				&& func(buff_a))
 		{
-			count = 0;
+			(*act_count)++;
+			err = 0;
 		}
 		else
 		{
 			debug(DEBUG_MEM_READ_SINGLE_FAILED);
-			res = RES_ERROR;
+			err = 1;
 		}
 	}
 	else
 	{
+		*act_count = 0;
 		uint8_t cmdres = mem_cmd(CMD18, sector);
 		if (cmdres == 0)
 		{
@@ -475,7 +516,7 @@ DRESULT disk_read_multi (
 			uint8_t* cbuf = buff_a;
 			uint8_t* dbuf = buff_b;
 			MEM_GPIOR = 0xFF;
-			
+
 			// setup the parts of DMA that are consistent throughout
 			ATOMIC_BLOCK(ATOMIC_FORCEON)
 			{
@@ -483,20 +524,23 @@ DRESULT disk_read_multi (
 				MEM_DMA_WRITE.SRCADDR1 = (uint8_t) (((uint16_t) (&MEM_GPIOR)) >> 8);
 				MEM_DMA_WRITE.SRCADDR2 = 0;
 			}
-			MEM_DMA_WRITE.TRFCNT = 514;
 			MEM_DMA_WRITE.ADDRCTRL = 0;
-			MEM_DMA_READ.TRFCNT = 514;
 			MEM_DMA_READ.ADDRCTRL = DMA_CH_DESTDIR_INC_gc;
-			
+			ATOMIC_BLOCK(ATOMIC_FORCEON)
+			{
+				MEM_DMA_WRITE.TRFCNT = 514;
+				MEM_DMA_READ.TRFCNT = 514;
+			}
+
 			// directly read the first block
 			if (! mem_bulk_read(buff_a, 512))
 			{
 				debug(DEBUG_MEM_READ_MUL_FIRST_FAILED);
-				res = RES_ERROR;
+				err = 1;
 			}
-			
+
 			// cycle (count - 1) total times; we do +1 transfer at end
-			while ((! res) && --count)
+			while ((! err) && --count)
 			{
 				// swap between buffers
 				if (bufsel)
@@ -510,7 +554,7 @@ DRESULT disk_read_multi (
 					dbuf = buff_a;
 				}
 				bufsel = !bufsel;
-				
+
 				// setup DMA on the empty current buffer
 				ATOMIC_BLOCK(ATOMIC_FORCEON)
 				{
@@ -518,7 +562,7 @@ DRESULT disk_read_multi (
 					MEM_DMA_READ.DESTADDR1 = ((uint16_t) cbuf) >> 8;
 					MEM_DMA_READ.DESTADDR2 = 0;
 				}
-				
+
 				// wait for the card to become ready
 				uint8_t token;
 				mem_setup_timeout(200);
@@ -530,10 +574,10 @@ DRESULT disk_read_multi (
 				if (token != 0xFE)
 				{
 					debug_dual(DEBUG_MEM_READ_MUL_TIMEOUT, token);
-					res = RES_ERROR;
+					err = 1;
 					break;
 				}
-				
+
 				// execute the DMA operation
 				MEM_DMA_READ.CTRLA |= DMA_CH_ENABLE_bm;
 				MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
@@ -542,15 +586,31 @@ DRESULT disk_read_multi (
 				if (! func(dbuf))
 				{
 					debug(DEBUG_MEM_READ_MUL_FUNC_ERR);
-					res = RES_ERROR;
+					err = 1;
+				}
+				else
+				{
+					(*act_count)++;
 				}
 				
 				// wait for the DMA transaction to finish
+				block_until_dma_done();
+				if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm)
+				{
+					/*
+					 * Underflow on the DMA channel, which means we cannot send
+					 * this block to the initiator. We soft-error in this
+					 * condition and allow the wrapper to handle things.
+					 */
+					MEM_DMA_READ.CTRLB |= DMA_CH_ERRIF_bm;
+					err = 2;
+				}
+
 				while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
 				if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm)
 				{
 					debug(DEBUG_MEM_READ_MUL_DMA_ERR);
-					res = RES_ERROR;
+					err = 1;
 					break;
 				}
 			}
@@ -559,24 +619,59 @@ DRESULT disk_read_multi (
 			mem_cmd(CMD12, 0);
 			
 			// send the last sector to the computer if valid
-			if (! res)
+			if (! err)
 			{
 				if (! func(cbuf))
 				{
 					debug(DEBUG_MEM_READ_MUL_FUNC_ERR);
-					res = RES_ERROR;
+					err = 1;
 				}
+				else
+				{
+					(*act_count)++;
+				}
+			}
+			else
+			{
+				// note soft-error
+				if (err == 2) err = 0;
 			}
 		}
 		else
 		{
 			debug_dual(DEBUG_MEM_READ_MUL_CMD_FAILED, cmdres);
-			res = RES_ERROR;
+			err = 1;
 		}
 	}
 	mem_deselect();
 
-	return res;
+	return err;
+}
+
+DRESULT disk_read_multi (
+	BYTE pdrv,
+	BYTE (*func)(BYTE*),
+	LBA_t sector,
+	UINT count
+)
+{
+	if (pdrv != 0) return RES_NOTRDY;
+	if (card_status & STA_NOINIT) return RES_NOTRDY;
+	if (! count) return RES_PARERR;
+
+	uint16_t act_count = 0;
+	uint8_t err = disk_read_blocks(func, sector, count, &act_count);
+	while ((! err) && act_count != count)
+	{
+		// resolve by attempting read again starting at the issue point
+		debug(DEBUG_MEM_READ_SOFT_ERROR);
+		err = disk_read_blocks(func,
+				sector + act_count,
+				count - act_count,
+				&act_count);
+	}
+	if (err) return RES_ERROR;
+	else return RES_OK;
 }
 
 #if !FF_FS_READONLY
@@ -673,15 +768,18 @@ DRESULT disk_write_multi (
 
 			// setup the parts of DMA that are consistent throughout
 			MEM_DMA_WRITE.ADDRCTRL = DMA_CH_SRCDIR_INC_gc;
-			MEM_DMA_WRITE.TRFCNT = 516;
 			ATOMIC_BLOCK(ATOMIC_FORCEON)
 			{
 				MEM_DMA_READ.DESTADDR0 = (uint8_t) ((uint16_t) &MEM_GPIOR);
 				MEM_DMA_READ.DESTADDR1 = (uint8_t) (((uint16_t) (&MEM_GPIOR)) >> 8);
 				MEM_DMA_READ.DESTADDR2 = 0;
 			}
-			MEM_DMA_READ.TRFCNT = 516;
 			MEM_DMA_READ.ADDRCTRL = 0;
+			ATOMIC_BLOCK(ATOMIC_FORCEON)
+			{
+				MEM_DMA_WRITE.TRFCNT = 516;
+				MEM_DMA_READ.TRFCNT = 516;
+			}
 
 			do
 			{
@@ -701,8 +799,20 @@ DRESULT disk_write_multi (
 				if (func_res)
 				{
 					// wait for the last DMA transaction to finish
-					while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
-					if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm) break;
+					block_until_dma_done();
+					if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm)
+					{
+						/*
+						 * Read underflow, which isn't a huge deal as long as
+						 * the last byte was accepted correctly (which we check
+						 * for anyway). Just reset error state and keep going.
+						 */
+						ATOMIC_BLOCK(ATOMIC_FORCEON)
+						{
+							MEM_DMA_READ.TRFCNT = 516;
+						}
+						MEM_DMA_READ.CTRLB |= DMA_CH_ERRIF_bm;
+					}
 
 					// check result of last transaction
 					uint8_t response = MEM_GPIOR;
@@ -727,8 +837,11 @@ DRESULT disk_write_multi (
 			while (--count && func_res);
 
 			// wait for the last DMA transaction to finish
-			while (MEM_DMA_READ.CTRLA & DMA_CH_ENABLE_bm);
-			if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm) count = 1;
+			block_until_dma_done();
+			if (MEM_DMA_READ.CTRLB & DMA_CH_ERRIF_bm)
+			{
+				MEM_DMA_READ.CTRLB |= DMA_CH_ERRIF_bm;
+			}
 
 			// check result of last transaction
 			uint8_t response = MEM_GPIOR;
