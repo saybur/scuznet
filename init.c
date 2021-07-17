@@ -77,20 +77,6 @@ void init_clock(void)
 		);
 }
 
-void init_debug(void)
-{
-	DEBUG_PORT.OUTSET |= DEBUG_PIN_TX;
-	DEBUG_PORT.DIRSET |= DEBUG_PIN_TX;
-	DEBUG_USART.BAUDCTRLA = 3; // 500kbps
-	DEBUG_USART.CTRLB |= USART_TXEN_bm;
-
-#if defined(LED_POW_PORT) && defined(LED_POW_PIN)
-	LED_POW_PORT.DIRSET = LED_POW_PIN;
-#endif
-
-	LED_PORT.OUT &= ~LED_PIN;
-}
-
 void init_isr(void)
 {
 	PMIC.CTRL |= PMIC_HILVLEN_bm | PMIC_MEDLVLEN_bm | PMIC_LOLVLEN_bm;

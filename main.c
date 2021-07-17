@@ -33,6 +33,7 @@
 #include "test.h"
 
 static FATFS fs;
+static uint16_t stack_unused = 0xFFFF;
 
 static void main_handle(void)
 {
@@ -70,6 +71,16 @@ static void main_handle(void)
 
 		led_off();
 	}
+	else if (debug_verbose())
+	{
+		uint16_t stackp = debug_stack_unused();
+		if (stackp < stack_unused)
+		{
+			stack_unused = stackp;
+			debug(DEBUG_MAIN_STACK_UNUSED);
+			debug_dual(stackp >> 8, stackp);
+		}
+	}
 
 	link_check_rx();
 	net_transmit_check();
@@ -81,7 +92,7 @@ int main(void)
 	// configure basic peripherals and get ISRs going
 	init_mcu();
 	init_clock();
-	init_debug();
+	debug_init();
 	led_on();
 	init_dma();
 	enc_init();

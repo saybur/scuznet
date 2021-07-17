@@ -31,6 +31,7 @@
  * for each symbol.
  */
 #define DEBUG_MAIN_ACTIVE_NO_TARGET               0x10 // 1
+#define DEBUG_MAIN_STACK_UNUSED                   0x1D // 2
 #define DEBUG_MAIN_RESET                          0x1E // 0
 #define DEBUG_MAIN_READY                          0x1F // 0
 #define DEBUG_LOGIC_BAD_LUN                       0x50 // 0
@@ -150,6 +151,20 @@ static inline __attribute__((always_inline)) void debug(
 	// do nothing
 }
 #endif
+
+/*
+ * Sets up the debugging system, including the USART and the reporting LEDs.
+ * 
+ * This should only be called once, from main(), during initial MCU startup.
+ */
+void debug_init(void);
+
+/*
+ * Calculates the amount of stack space not yet used, using the "painting" done
+ * during startup. This method is not foolproof but should give a good idea of
+ * how much stack is being used during program execution.
+ */
+uint16_t debug_stack_unused();
 
 /*
  * Called to halt processing when a fatal condition is detected.

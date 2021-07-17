@@ -21,6 +21,59 @@
 #include "config.h"
 #include "debug.h"
 
+extern uint8_t _end;
+extern uint8_t __stack;
+
+/*
+ * Fills the stack with 0xC5 to assist with stack usage diagnostics. Both this
+ * and the subsequent debug_stack_check() are (very slightly) modified from the
+ * public-domain code here:
+ * 
+ * https://www.avrfreaks.net/forum/soft-c-avrgcc-monitoring-stack-usage
+ */
+void stack_paint(void) __attribute__ ((naked)) __attribute__ ((section (".init1")));
+void stack_paint(void)
+{
+	__asm__ __volatile__(
+		"ldi r30, lo8(_end)"		"\n\t"
+		"ldi r31, hi8(_end)"		"\n\t"
+		"ldi r24, lo8(0xC5)"		"\n\t"
+		"ldi r25, hi8(__stack)"		"\n\t"
+		".paint_loop:"				"\n\t"
+		"st Z+,r24"					"\n\t"
+		".paint_cmp:"				"\n\t"
+		"cpi r30, lo8(__stack)"		"\n\t"
+		"cpc r31, r25"				"\n\t"
+		"brlo .paint_loop"			"\n\t"
+		"breq .paint_loop"			"\n\t"
+		);
+}
+
+void debug_init(void)
+{
+	DEBUG_PORT.OUTSET |= DEBUG_PIN_TX;
+	DEBUG_PORT.DIRSET |= DEBUG_PIN_TX;
+	DEBUG_USART.BAUDCTRLA = 3; // 500kbps
+	DEBUG_USART.CTRLB |= USART_TXEN_bm;
+
+#if defined(LED_POW_PORT) && defined(LED_POW_PIN)
+	LED_POW_PORT.DIRSET = LED_POW_PIN;
+#endif
+
+	LED_PORT.OUT &= ~LED_PIN;
+}
+
+uint16_t debug_stack_unused(void)
+{
+	const uint8_t *p = &_end;
+	uint16_t c = 0;
+	while (*p == 0xC5 && p <= &__stack)
+	{
+		p++; c++;
+	}
+	return c;
+}
+
 void fatal(uint8_t lflash, uint8_t sflash)
 {
 	// disable all but high-level (/RST) interrupts

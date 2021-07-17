@@ -39,14 +39,6 @@ void init_mcu(void);
 void init_clock(void);
 
 /*
- * Initializes the USART that sends debugging information and sets up the
- * output status LED.
- * 
- * This should only be called once, from main(), during initial MCU startup.
- */
-void init_debug(void);
-
-/*
  * Initializes the DMAC and sets up constant values for the DMA channels.
  * 
  * This should only be called once, from main(), during initial MCU startup.
