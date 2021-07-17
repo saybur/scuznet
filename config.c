@@ -24,8 +24,55 @@
 #include "lib/ff/diskio.h"
 #include "debug.h"
 
+/*
+ * The configuration keys and values we check for, in flash to save precious
+ * SRAM for other uses.
+ */
+static const __flash char str_dayna[] =     "dayna";
+static const __flash char str_debug[] =     "debug";
+static const __flash char str_driver[] =    "driver";
+static const __flash char str_ethernet[] =  "ethernet";
+static const __flash char str_fast[] =      "fast";
+static const __flash char str_file[] =      "file";
+static const __flash char str_forcefast[] = "forcefast";
+static const __flash char str_hdd[] =       "hdd";
+static const __flash char str_id[] =        "id";
+static const __flash char str_mac[] =       "mac";
+static const __flash char str_mode[] =      "mode";
+static const __flash char str_normal[] =    "normal";
+static const __flash char str_nuvo[] =      "nuvo";
+static const __flash char str_parity[] =    "parity";
+static const __flash char str_scuznet[] =   "scuznet";
+static const __flash char str_selftest[] =  "selftest";
+static const __flash char str_size[] =      "size";
+static const __flash char str_verbose[] =   "verbose";
+static const __flash char str_yes[] =       "yes";
+
 ENETConfig config_enet = { 255, 0, LINK_NONE, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
 HDDConfig config_hdd[HARD_DRIVE_COUNT];
+
+/*
+ * String equality checks where one string is in SRAM and the other is in
+ * flash. These should hopefully operate similarly to strcmp and strncmp,
+ * apart from only checking equality.
+ */
+static uint8_t strequ(const char* a, const __flash char* b)
+{
+	while (*a != '\0' && *a == *b)
+	{
+		a++; b++;
+	}
+	return *a == *b;
+}
+static uint8_t strnequ(const char* a, const __flash char* b, uint8_t l)
+{
+	while (*a != '\0' && *a == *b && l)
+	{
+		a++; b++; --l;
+	}
+	if (! l) return 1;
+	return *a == *b;
+}
 
 /*
  * INIH callback for configuration information.
@@ -38,35 +85,35 @@ static int config_handler(
 {
 	(void) user; // silence compiler
 
-	if (strcmp(section, "scuznet") == 0)
+	if (strequ(section, str_scuznet))
 	{
-		if (strcmp(name, "debug") == 0)
+		if (strequ(name, str_debug))
 		{
-			if (strcmp(value, "yes") == 0)
+			if (strequ(value, str_yes))
 			{
 				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_DEBUG;
 			}
 			return 1;
 		}
-		else if (strcmp(name, "verbose") == 0)
+		else if (strequ(name, str_verbose))
 		{
-			if (strcmp(value, "yes") == 0)
+			if (strequ(value, str_yes))
 			{
 				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_VERBOSE;
 			}
 			return 1;
 		}
-		else if (strcmp(name, "parity") == 0)
+		else if (strequ(name, str_parity))
 		{
-			if (strcmp(value, "yes") == 0)
+			if (strequ(value, str_yes))
 			{
 				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_PARITY;
 			}
 			return 1;
 		}
-		else if (strcmp(name, "selftest") == 0)
+		else if (strequ(name, str_selftest))
 		{
-			if (strcmp(value, "yes") == 0)
+			if (strequ(value, str_yes))
 			{
 				GLOBAL_CONFIG_REGISTER |= GLOBAL_FLAG_SELFTEST;
 			}
@@ -77,9 +124,9 @@ static int config_handler(
 			return 0;
 		}
 	}
-	else if (strcmp(section, "ethernet") == 0)
+	else if (strequ(section, str_ethernet))
 	{
-		if (strcmp(name, "id") == 0)
+		if (strequ(name, str_id))
 		{
 			int i = atoi(value);
 			if (i >= 0 && i <= 6)
@@ -88,14 +135,14 @@ static int config_handler(
 			}
 			return 1;
 		}
-		else if (strcmp(name, "driver") == 0)
+		else if (strequ(name, str_driver))
 		{
-			if (strcmp(value, "nuvo") == 0)
+			if (strequ(value, str_nuvo))
 			{
 				config_enet.type = LINK_NUVO;
 				return 1;
 			}
-			else if (strcmp(value, "dayna") == 0)
+			else if (strequ(value, str_dayna))
 			{
 				config_enet.type = LINK_DAYNA;
 				return 1;
@@ -105,21 +152,24 @@ static int config_handler(
 				return 0;
 			}
 		}
-		else if (strcmp(name, "mac") == 0)
+		else if (strequ(name, str_mac))
 		{
+			// must be in XX:XX:XX:XX:XX:XX format
+			if (strlen(value) != 17) return 0;
+
 			int v;
-			char* copy = strdup(value);
-			char* tok = strtok(copy, ":");
-			for (uint8_t i = 0; i < 6 && tok != NULL; i++)
+			char macbuf[3];
+			macbuf[2] = '\0';
+			for (uint8_t i = 0; i < 6; i++)
 			{
-				v = (int) strtol(tok, NULL, 16);
+				macbuf[0] = value[i * 3];
+				macbuf[1] = value[i * 3 + 1];
+				v = (int) strtol(macbuf, NULL, 16);
 				if (v >= 0 && v <= 255)
 				{
 					config_enet.mac[i] = (uint8_t) v;
 				}
-				tok = strtok(NULL, ":");
 			}
-			free(copy);
 
 			// disable the multicast bit if set
 			config_enet.mac[0] &= ~1;
@@ -131,7 +181,7 @@ static int config_handler(
 			return 0;
 		}
 	}
-	else if (strncmp(section, "hdd", 3) == 0) // starts with "hdd"?
+	else if (strnequ(section, str_hdd, 3)) // starts with "hdd"?
 	{
 		uint8_t hddsel;
 		switch (strlen(section))
@@ -147,7 +197,7 @@ static int config_handler(
 		}
 		if (hddsel > HARD_DRIVE_COUNT) return 0;
 
-		if (strcmp(name, "id") == 0)
+		if (strequ(name, str_id))
 		{
 			int v = atoi(value);
 			if (v >= 0 && v <= 6)
@@ -156,29 +206,29 @@ static int config_handler(
 			}
 			return 1;
 		}
-		else if (strcmp(name, "file") == 0)
+		else if (strequ(name, str_file))
 		{
 			config_hdd[hddsel].filename = strdup(value);
 			return 1;
 		}
-		else if (strcmp(name, "size") == 0)
+		else if (strequ(name, str_size))
 		{
 			config_hdd[hddsel].size = ((uint16_t) atoi(value));
 			return 1;
 		}
-		else if (strcmp(name, "mode") == 0)
+		else if (strequ(name, str_mode))
 		{
-			if (strcmp(value, "fast") == 0)
+			if (strequ(value, str_fast))
 			{
 				config_hdd[hddsel].mode = HDD_MODE_FAST;
 				return 1;
 			}
-			if (strcmp(value, "forcefast") == 0)
+			if (strequ(value, str_forcefast))
 			{
 				config_hdd[hddsel].mode = HDD_MODE_FORCEFAST;
 				return 1;
 			}
-			else if (strcmp(value, "normal") == 0)
+			else if (strequ(value, str_normal))
 			{
 				config_hdd[hddsel].mode = HDD_MODE_NORMAL;
 				return 1;
