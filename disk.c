@@ -95,6 +95,10 @@ static uint8_t card_type;
 static uint8_t buff_a[DISK_BUFFER_SIZE];
 static uint8_t buff_b[DISK_BUFFER_SIZE];
 
+// for all DMA channels, writing this to CTRLA starts them in the correct mode
+// and avoids the extra cycles of a read-modify-write in an atomic block
+#define DMA_START_CTRLA (DMA_CH_ENABLE_bm | DMA_CH_BURSTLEN_1BYTE_gc | DMA_CH_SINGLE_bm);
+
 /*
  * Sends a byte to the memory card, returning the response.
  * 
@@ -578,8 +582,11 @@ static uint8_t disk_read_blocks (
 				}
 
 				// execute the DMA operation
-				MEM_DMA_READ.CTRLA |= DMA_CH_ENABLE_bm;
-				MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
+				ATOMIC_BLOCK(ATOMIC_FORCEON)
+				{
+					MEM_DMA_READ.CTRLA = DMA_START_CTRLA;
+					MEM_DMA_WRITE.CTRLA = DMA_START_CTRLA;
+				}
 
 				// send the data buffer to the computer
 				if (! func(dbuf))
@@ -829,8 +836,11 @@ DRESULT disk_write_multi (
 					if (! mem_wait_ready(500)) break;
 
 					// execute the DMA operation
-					MEM_DMA_READ.CTRLA |= DMA_CH_ENABLE_bm;
-					MEM_DMA_WRITE.CTRLA |= DMA_CH_ENABLE_bm;
+					ATOMIC_BLOCK(ATOMIC_FORCEON)
+					{
+						MEM_DMA_READ.CTRLA = DMA_START_CTRLA;
+						MEM_DMA_WRITE.CTRLA = DMA_START_CTRLA;
+					}
 				}
 			}
 			while (--count && func_res);
