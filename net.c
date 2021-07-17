@@ -633,12 +633,15 @@ ISR(ENC_INT_ISR, ISR_NAKED)
 		"sts " STRINGIFY(ENC_PORT_OUTCLR_ADDR) ", r16 \n\t"
 		// load the DMA CTRLA data (1 cycle)
 		"ldi r16, " STRINGIFY(NET_DMA_STARTCMD) " \n\t"
-		// write CTRLA for the write channel, then the read channel (4 cycles)
+		// write CTRLA for the write channel, then the read channel, then
+		// stop further interrupts for /E_INT; we must not be interrupted or
+		// read bytes will be lost (9 cycles)
+		"cli \n\t"
 		"sts " STRINGIFY(NET_DMA_WRITE_CTRLADDR) ", r16 \n\t"
 		"sts " STRINGIFY(NET_DMA_READ_CTRLADDR) ", r16 \n\t"
-		// stop further interrupt triggers for /E_INT (3 cycles)
 		"ldi r16, 0x00 \n\t"
 		"sts " STRINGIFY(ENC_PORT_EXT_ICTRL_ADDR) ", r16 \n\t"
+		"sei \n\t"
 		// restore r16 before returning (1 cycle)
 		"in r16, " STRINGIFY(NET_SCRATCH_IOADDR) " \n\t"
 		// return from the interrupt (4 cycles)
