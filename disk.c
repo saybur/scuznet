@@ -508,7 +508,6 @@ static uint8_t disk_read_blocks (
 	}
 	else
 	{
-		*act_count = 0;
 		uint8_t cmdres = mem_cmd(CMD18, sector);
 		if (cmdres == 0)
 		{
