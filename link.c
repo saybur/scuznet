@@ -178,10 +178,6 @@ static void link_cmd_inquiry(uint8_t* cmd)
 	if (debug_enabled())
 	{
 		debug(DEBUG_LINK_INQUIRY);
-		if (debug_verbose())
-		{
-			debug_dual(alloc >> 8, alloc);
-		}
 	}
 
 	// protect against 0-length allocation
