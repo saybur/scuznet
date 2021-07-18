@@ -37,6 +37,7 @@
 #define DEBUG_LOGIC_BAD_LUN                       0x50 // 0
 #define DEBUG_LOGIC_BAD_CMD                       0x52 // 1
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53 // 0
+#define DEBUG_LOGIC_SET_SENSE                     0x54 // 1
 #define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E // 1
 #define DEBUG_LOGIC_MESSAGE                       0x5F // 1
 #define DEBUG_HDD_MODE_SENSE                      0x7B // 0

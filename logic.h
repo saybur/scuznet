@@ -50,35 +50,50 @@
  */
 
 /*
- * Information stored locally for each device ID.
+ * Defines the sense data types supported as a response to a REQUEST SENSE
+ * command. This is a small subset of the full sense data supported by the
+ * standard, which is much more comprehensive (and confusing).
+ * 
+ * A single 32-bit value is stored alongside the sense data for reporting.
+ * This value means different things depending on the sense state.
+ * 
+ * SENSE_OK: no sense data to report (device OK).
+ * SENSE_INVALID_CDB_OPCODE: the command opcode is unsupported; provide the
+ *     opcode that triggered the issue in the low 8 bits of the value.
+ * SENSE_INVALID_CDB_ARGUMENT: one or more of the command arguments are
+ *     invalid; provide index of the first invalid argument.
+ * SENSE_INVALID_PARAMETER: one or more of the parameters sent after the
+ *     command were invalid; provide the index of the first invalid argument
+ *     sent during DATA OUT.
+ * SENSE_ILLEGAL_LBA: a logical block address was invalid; provide the first
+ *     invalid LBA.
+ * SENSE_MEDIUM_ERROR: an unspecified medium error; can provide anything.
+ * SENSE_MEDIUM_ERROR: an unspecified hardware error; can provide anything.
+ * SENSE_BECOMING_READY: device not yet ready; can provide anything.
  */
-typedef struct LogicData_t {
-	uint8_t sense_valid;
-	uint8_t sense_data[18];
-} LogicData;
+typedef enum {
+	SENSE_OK,
+	SENSE_INVALID_CDB_OPCODE,
+	SENSE_INVALID_CDB_ARGUMENT,
+	SENSE_INVALID_PARAMETER,
+	SENSE_ILLEGAL_LBA,
+	SENSE_MEDIUM_ERROR,
+	SENSE_HARDWARE_ERROR,
+	SENSE_BECOMING_READY
+} SENSEDATA;
 
 /*
  * Stores 32 bit LBA and transfer length from a READ(6), READ(10), WRITE(6),
- * or WRITE(10) command, along with a flag for validity.
- * 
- * If the invalid flag is non-zero, it indicates the other values are not
- * legal. The value will be set to 1, plus the byte number in the CDB that is
- * responsible for the problem.
+ * or WRITE(10) command.
  */
 typedef struct LogicDataOp_t {
-	uint8_t invalid;
 	uint32_t lba;
 	uint16_t length;
 } LogicDataOp;
 
 /*
- * The globally available data. The information in this struct is invalid until
- * logic_parse_data_op() is called.
- */
-extern LogicDataOp logic_data;
-
-/*
- * The number of devices this expects.
+ * The number of devices this must support. Values at or above this will
+ * cause an error if supplied to logic_start().
  */
 #define LOGIC_DEVICE_COUNT              (HARD_DRIVE_COUNT + 1)
 
@@ -108,24 +123,6 @@ extern LogicDataOp logic_data;
  * and can order the initiator around.
  */
 #define logic_ready()   (phy_is_active() && (! phy_is_sel_asserted()))
-
-/*
- * Sense keys used by this program.
- */
-#define SENSE_KEY_HARDWARE_ERROR        0x04
-#define SENSE_KEY_ILLEGAL_REQUEST       0x05
-#define SENSE_KEY_MEDIUM_ERROR          0x03
-#define SENSE_KEY_NOT_READY             0x02
-#define SENSE_KEY_UNIT_ATTENTION        0x06
-
-/*
- * Sense data items used by this program, in ASC/ASCQ order.
- */
-#define SENSE_DATA_NO_INFORMATION       0x0000
-#define SENSE_DATA_INVALID_CDB_OP       0x2000
-#define SENSE_DATA_INVALID_CDB_PARAM    0x2600
-#define SENSE_DATA_INVALID_CDB_FIELD    0x2400
-#define SENSE_DATA_LUN_BECOMING_RDY     0x0401
 
 /*
  * ============================================================================
@@ -183,9 +180,12 @@ uint8_t logic_sense_valid(void);
 /*
  * Parses the LBA and transfer length from a READ(6), READ(10), WRITE(6), or
  * WRITE(10) command using the given CDB array and stores the result in the
- * global struct. See logic_data for details.
+ * given struct.
+ * 
+ * This will return nonzero on success and zero on failure. On failure, sense
+ * data will already be set.
  */
-void logic_parse_data_op(uint8_t*);
+uint8_t logic_parse_data_op(uint8_t* cmd, LogicDataOp* op);
 
 /*
  * ============================================================================
@@ -331,22 +331,13 @@ void logic_cmd_illegal_op(uint8_t);
 void logic_cmd_illegal_arg(uint8_t);
 
 /*
- * Sets the sense data to the given sense key (including other flags) and
- * additional sense code, packed such that ASC is in the high 8 bits and ASCQ
- * is in the low 8 bits of the given 16 bit value.
+ * Sets the sense data as given. The 32-bit value is dependent on the type of
+ * sense data being given; refer to the enum for details.
  * 
  * This just makes the sense data valid, and does *not* send CHECK CONDITION /
  * COMMAND COMPLETE as the above functions do.
  */
-void logic_set_sense(uint8_t, uint16_t);
-
-/*
- * As above, but additionally sets the sense-key specific bytes to the given
- * values, where the additional 8 bit parameter is for byte 15 and the
- * additional 16 bit value is for bytes 16 and 17, in the same byte order.
- * as given.
- */
-void logic_set_sense_pointer(uint8_t, uint16_t, uint8_t, uint16_t);
+void logic_set_sense(SENSEDATA data, uint32_t value);
 
 /*
  * ============================================================================

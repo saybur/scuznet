@@ -31,7 +31,7 @@
  */
 static const __flash uint8_t sense_data_no_sense[] = {
 	0xF0, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x0A,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00
@@ -44,7 +44,7 @@ static const __flash uint8_t sense_data_no_sense[] = {
  */
 static const __flash uint8_t sense_data_illegal_lun[] = {
 	0xF0, 0x00, 0x05, 0x00,
-	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x0A,
 	0x00, 0x00, 0x00, 0x00,
 	0x25, 0x00, 0x00, 0x00,
 	0x00, 0x00
@@ -56,10 +56,13 @@ static const __flash uint8_t inquiry_data_illegal_lun[] = {
 	' ', ' ', ' ', ' ', ' ', ' ', ' ', '0'
 };
 
-// declaration of extern from header
-LogicDataOp logic_data;
-
+// REQUEST SENSE information for each managed device
+typedef struct LogicData_t {
+	SENSEDATA sense;
+	uint32_t value;
+} LogicData;
 static LogicData devices[LOGIC_DEVICE_COUNT];
+
 static uint8_t device_id;
 static uint8_t last_message_in;
 static uint8_t last_identify;
@@ -120,47 +123,49 @@ uint8_t logic_identify(void)
 
 uint8_t logic_sense_valid(void)
 {
-	return devices[device_id].sense_valid;
+	return devices[device_id].sense != SENSE_OK;
 }
 
-void logic_parse_data_op(uint8_t* cmd)
+uint8_t logic_parse_data_op(uint8_t* cmd, LogicDataOp* op)
 {
 	if (cmd[0] == 0x28 || cmd[0] == 0x2A || cmd[0] == 0x2B)
 	{
 		if (cmd[1] & 1)
 		{
 			// RelAddr, so nope
-			logic_data.invalid = 2;
+			logic_set_sense(SENSE_INVALID_CDB_ARGUMENT, 1);
+			return 0;
 		}
 		else
 		{
-			logic_data.lba = ((uint32_t) cmd[2] << 24)
+			op->lba = ((uint32_t) cmd[2] << 24)
 					| ((uint32_t) cmd[3] << 16)
 					| ((uint32_t) cmd[4] << 8)
 					| (uint32_t) cmd[5];
-			logic_data.length = (cmd[7] << 8)
+			op->length = (cmd[7] << 8)
 					+ cmd[8];
-			logic_data.invalid = 0;
+			return 1;
 		}
 	}
 	else if (cmd[0] == 0x08 || cmd[0] == 0x0A || cmd[0] == 0x0B)
 	{
-		logic_data.lba = ((uint32_t) (cmd[1] & 0x1F) << 16)
+		op->lba = ((uint32_t) (cmd[1] & 0x1F) << 16)
 				| ((uint32_t) cmd[2] << 8)
 				| (uint32_t) cmd[3];
 		if (cmd[4] == 0)
 		{
-			logic_data.length = 256;
+			op->length = 256;
 		}
 		else
 		{
-			logic_data.length = cmd[4];
+			op->length = cmd[4];
 		}
-		logic_data.invalid = 0;
+		return 1;
 	}
 	else
 	{
-		logic_data.invalid = 1;
+		logic_set_sense(SENSE_INVALID_CDB_OPCODE, cmd[0]);
+		return 0;
 	}
 }
 
@@ -393,7 +398,7 @@ uint8_t logic_command(uint8_t* command)
 	 */
 	if (command[0] != 0x03)
 	{
-		devices[device_id].sense_valid = 0;
+		devices[device_id].sense = SENSE_OK;
 	}
 
 	// move to MESSAGE OUT if required
@@ -491,15 +496,8 @@ void logic_cmd_illegal_op(uint8_t opcode)
 {
 	debug_dual(DEBUG_LOGIC_BAD_CMD, opcode);
 
-	// update sense data
-	devices[device_id].sense_data[0] = 0xF0;
-	for (uint8_t i = 1; i < 18; i++)
-	{
-		devices[device_id].sense_data[i] = 0x00;
-	}
-	devices[device_id].sense_data[2] = SENSE_KEY_ILLEGAL_REQUEST;
-	devices[device_id].sense_data[12] = 0x20;
-	devices[device_id].sense_valid = 1;
+	devices[device_id].sense = SENSE_INVALID_CDB_OPCODE;
+	devices[device_id].value = opcode;
 
 	// terminate rest of command
 	logic_status(LOGIC_STATUS_CHECK_CONDITION);
@@ -510,43 +508,20 @@ void logic_cmd_illegal_arg(uint8_t position)
 {
 	debug(DEBUG_LOGIC_BAD_CMD_ARGS);
 
-	// update sense data
-	devices[device_id].sense_data[0] = 0xF0;
-	for (uint8_t i = 1; i < 18; i++)
-	{
-		devices[device_id].sense_data[i] = 0x00;
-	}
-	devices[device_id].sense_data[2] = SENSE_KEY_ILLEGAL_REQUEST;
-	devices[device_id].sense_data[12] = 0x24;
-	devices[device_id].sense_data[15] = 0xC0;
-	devices[device_id].sense_data[17] = position;
-	devices[device_id].sense_valid = 1;
+	devices[device_id].sense = SENSE_INVALID_CDB_ARGUMENT;
+	devices[device_id].value = position;
 
 	// terminate rest of command
 	logic_status(LOGIC_STATUS_CHECK_CONDITION);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-void logic_set_sense(uint8_t sense, uint16_t asc)
+void logic_set_sense(SENSEDATA sense, uint32_t value)
 {
-	devices[device_id].sense_data[0] = 0xF0;
-	for (uint8_t i = 1; i < 18; i++)
-	{
-		devices[device_id].sense_data[i] = 0x00;
-	}
-	devices[device_id].sense_data[2] = sense;
-	devices[device_id].sense_data[12] = (uint8_t) (asc >> 8);
-	devices[device_id].sense_data[13] = (uint8_t) asc;
-	devices[device_id].sense_valid = 1;
-}
+	debug_dual(DEBUG_LOGIC_SET_SENSE, sense);
 
-void logic_set_sense_pointer(uint8_t sense, uint16_t asc,
-		uint8_t sksv, uint16_t ptr)
-{
-	logic_set_sense(sense, asc);
-	devices[device_id].sense_data[15] = sksv;
-	devices[device_id].sense_data[16] = (uint8_t) (ptr >> 8);
-	devices[device_id].sense_data[17] = (uint8_t) ptr;
+	devices[device_id].sense = sense;
+	devices[device_id].value = value;
 }
 
 /*
@@ -562,16 +537,71 @@ void logic_request_sense(uint8_t* cmd)
 	uint8_t alloc = cmd[4];
 	if (alloc > 18)
 		alloc = 18;
-	
-	if (devices[device_id].sense_valid)
-	{
-		logic_data_in(devices[device_id].sense_data, alloc);
-		devices[device_id].sense_valid = 0;
-	}
-	else
+
+	// handle the most common cases we have pre-baked data for
+	if (devices[device_id].sense == SENSE_OK)
 	{
 		logic_data_in_pgm(sense_data_no_sense, alloc);
 	}
+	else
+	{
+		// create response data skeleton
+		uint8_t sense_data[18];
+		for (uint8_t i = 1; i < 18; i++)
+		{
+			sense_data[i] = 0x00;
+		}
+		sense_data[0] = 0xF0;
+		sense_data[7] = 0x0A;
+
+		// adjust reponse data according to issue
+		switch (devices[device_id].sense)
+		{
+		case SENSE_INVALID_CDB_OPCODE:
+			sense_data[2] = 0x05;
+			sense_data[12] = 0x20;
+			break;
+		case SENSE_INVALID_CDB_ARGUMENT:
+			sense_data[2] = 0x05;
+			sense_data[12] = 0x24;
+			sense_data[15] = 0xC0;
+			sense_data[17] = devices[device_id].value;
+			break;
+		case SENSE_INVALID_PARAMETER:
+			sense_data[2] = 0x05;
+			sense_data[12] = 0x26;
+			sense_data[15] = 0x80;
+			sense_data[16] = devices[device_id].value >> 8;
+			sense_data[17] = devices[device_id].value;
+		case SENSE_ILLEGAL_LBA:
+			sense_data[2] = 0x05;
+			sense_data[3] = devices[device_id].value >> 24;
+			sense_data[4] = devices[device_id].value >> 16;
+			sense_data[5] = devices[device_id].value >> 8;
+			sense_data[6] = devices[device_id].value;
+		case SENSE_MEDIUM_ERROR:
+			sense_data[2] = 0x03;
+			break;
+		case SENSE_HARDWARE_ERROR:
+			sense_data[2] = 0x04;
+			break;
+		case SENSE_BECOMING_READY:
+			sense_data[2] = 0x02;
+			sense_data[12] = 0x04;
+			sense_data[13] = 0x01;
+			break;
+		default:
+			// fallback to generic hardware error
+			// TODO: may want to debug this one
+			sense_data[2] = 0x04;
+		}
+
+		// send information
+		logic_data_in(sense_data, alloc);
+	}
+
+	// we can discard the sense data now that it has been sent
+	devices[device_id].sense = SENSE_OK;
 
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);

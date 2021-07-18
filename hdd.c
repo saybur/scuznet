@@ -83,8 +83,7 @@ static uint8_t hdd_seek(uint8_t id, uint32_t lba)
 	{
 		debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
 		state = HDD_ERROR;
-		logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-				SENSE_DATA_NO_INFORMATION);
+		logic_set_sense(SENSE_MEDIUM_ERROR, 0);
 		logic_status(LOGIC_STATUS_CHECK_CONDITION);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return 0;
@@ -103,29 +102,25 @@ static uint8_t hdd_seek(uint8_t id, uint32_t lba)
  * 
  * Returns true on success or false on failure.
  */
-static uint8_t hdd_parse_op(uint8_t id, uint8_t* cmd, uint8_t use_length)
+static uint8_t hdd_parse_op(uint8_t id, uint8_t* cmd,
+		LogicDataOp* op, uint8_t use_length)
 {
-	logic_parse_data_op(cmd);
-	LogicDataOp op = logic_data;
-	if (op.invalid)
+	if (! logic_parse_data_op(cmd, op))
 	{
 		debug(DEBUG_HDD_INVALID_OPERATION);
-		logic_cmd_illegal_arg(op.invalid - 1);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return 0;
 	}
 
 	if (use_length)
 	{
-		if (op.lba + op.length >= config_hdd[id].size)
+		if (op->lba + op->length >= config_hdd[id].size)
 		{
 			debug(DEBUG_HDD_SIZE_EXCEEDED);
-			/*
-			 * TODO: this should be ILLEGAL ARGUMENT with LBA in information. I
-			 * should redo the entire REQUEST SENSE handling system in the
-			 * logic subsystem, it does not adhere to the way things are
-			 * supposed to be done.
-			 */
-			logic_cmd_illegal_arg(op.invalid - 1);
+			logic_set_sense(SENSE_ILLEGAL_LBA, config_hdd[id].size);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 0;
 		}
 		else
@@ -135,11 +130,12 @@ static uint8_t hdd_parse_op(uint8_t id, uint8_t* cmd, uint8_t use_length)
 	}
 	else
 	{
-		if (op.lba >= config_hdd[id].size)
+		if (op->lba >= config_hdd[id].size)
 		{
 			debug(DEBUG_HDD_SIZE_EXCEEDED);
-			// TODO: per above comment
-			logic_cmd_illegal_arg(op.invalid - 1);
+			logic_set_sense(SENSE_ILLEGAL_LBA, config_hdd[id].size);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 0;
 		}
 		else
@@ -243,9 +239,7 @@ static void hdd_cmd_format(uint8_t id, uint8_t* cmd)
 		}
 		else
 		{
-			logic_set_sense_pointer(SENSE_KEY_ILLEGAL_REQUEST,
-					SENSE_DATA_INVALID_CDB_PARAM,
-					0xC0, 0x02);
+			logic_set_sense(SENSE_INVALID_PARAMETER, 2);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		}
@@ -258,8 +252,8 @@ static void hdd_cmd_format(uint8_t id, uint8_t* cmd)
 
 static void hdd_cmd_read(uint8_t id, uint8_t* cmd)
 {
-	if (! hdd_parse_op(id, cmd, 1)) return;
-	LogicDataOp op = logic_data;
+	LogicDataOp op;
+	if (! hdd_parse_op(id, cmd, &op, 1)) return;
 
 	if (op.length > 0)
 	{
@@ -313,8 +307,7 @@ static void hdd_cmd_read(uint8_t id, uint8_t* cmd)
 				}
 			}
 			state = HDD_ERROR;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
+			logic_set_sense(SENSE_MEDIUM_ERROR, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return;
@@ -328,8 +321,8 @@ static void hdd_cmd_read(uint8_t id, uint8_t* cmd)
 
 static void hdd_cmd_write(uint8_t id, uint8_t* cmd)
 {
-	if (! hdd_parse_op(id, cmd, 1)) return;
-	LogicDataOp op = logic_data;
+	LogicDataOp op;
+	if (! hdd_parse_op(id, cmd, &op, 1)) return;
 
 	if (op.length > 0)
 	{
@@ -383,8 +376,7 @@ static void hdd_cmd_write(uint8_t id, uint8_t* cmd)
 				}
 			}
 			state = HDD_ERROR;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
+			logic_set_sense(SENSE_MEDIUM_ERROR, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return;
@@ -853,8 +845,8 @@ static void hdd_cmd_mode_select(uint8_t id, uint8_t* cmd)
 
 static void hdd_cmd_seek(uint8_t id, uint8_t* cmd)
 {
-	if (! hdd_parse_op(id, cmd, 0)) return;
-	LogicDataOp op = logic_data;
+	LogicDataOp op;
+	if (! hdd_parse_op(id, cmd, &op, 0)) return;
 
 	if (debug_enabled())
 	{
@@ -1158,7 +1150,7 @@ uint8_t hdd_main(uint8_t id)
 		{
 			// system is still becoming ready
 			debug(DEBUG_HDD_NOT_READY);
-			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+			logic_set_sense(SENSE_BECOMING_READY, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 1;
@@ -1166,7 +1158,7 @@ uint8_t hdd_main(uint8_t id)
 		else
 		{
 			// general error
-			logic_set_sense(SENSE_KEY_HARDWARE_ERROR, SENSE_DATA_NO_INFORMATION);
+			logic_set_sense(SENSE_HARDWARE_ERROR, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 1;
