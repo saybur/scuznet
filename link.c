@@ -118,6 +118,16 @@ static uint8_t mac_rom[6];
 static uint8_t mac_dyn[6];
 
 /*
+ * Used to moderate the response to Dayna polling when emulating that device.
+ * If the system responds too fast to a sent packet, the driver can become
+ * confused. This value is set non-zero after a packet is sent, which prevents
+ * the next poll from returning data: instead, the poll just resets the flag.
+ * Polling happens fast enough under their system that this shouldn't have a
+ * major impact on performance.
+ */
+static uint8_t dayna_wait = 0;
+
+/*
  * ============================================================================
  *   UTILITY FUNCTIONS
  * ============================================================================
@@ -448,6 +458,10 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 	}
 
 	link_send_packet(length);
+	if (! net_pending())
+	{
+		dayna_wait = 1;
+	}
 
 	if (cmd[5] == 0x80)
 	{
@@ -573,7 +587,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		return;
 	}
 
-	if (! net_pending())
+	if (dayna_wait || ! net_pending())
 	{
 		// send "No Packets" message
 		// debug(DEBUG_LINK_RX_NO_DATA);
@@ -582,6 +596,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 		{
 			phy_data_offer(0x00);
 		}
+		dayna_wait = 0;
 	}
 	else
 	{
@@ -631,7 +646,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 
 		phy_phase(PHY_PHASE_DATA_IN);
 		// send the header
-		for (uint16_t i = 0; i < 6; i++)
+		for (uint8_t i = 0; i < 6; i++)
 		{
 			phy_data_offer(read_buffer[i]);
 		}
