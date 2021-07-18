@@ -50,6 +50,7 @@ static const __flash char str_yes[] =       "yes";
 
 ENETConfig config_enet = { 255, 0, LINK_NONE, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
 HDDConfig config_hdd[HARD_DRIVE_COUNT];
+uint8_t global_buffer[GLOBAL_BUFFER_SIZE];
 
 /*
  * String equality checks where one string is in SRAM and the other is in

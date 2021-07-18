@@ -106,6 +106,18 @@ extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
 
 /*
  * ============================================================================
+ *   GLOBAL BUFFER
+ * ============================================================================
+ * 
+ * This is a slice of memory available for the memory card access code, or
+ * another part of the program executing when access to the memory card is not
+ * being performed.
+ */
+#define GLOBAL_BUFFER_SIZE      1032 // must be at least 516 * 2
+extern uint8_t global_buffer[GLOBAL_BUFFER_SIZE];
+
+/*
+ * ============================================================================
  *   HARDWARE CONFIGURATION
  * ============================================================================
  *
