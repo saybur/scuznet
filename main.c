@@ -106,7 +106,7 @@ int main(void)
 	RST.STATUS = 0xFF; // clear all flags for next reboot (?)
 	if (rst_stat & RST_BORF_bm)
 	{
-		fatal(FATAL_BROWNOUT, 0);
+		fatal(FATAL_GENERAL, FATAL_BROWNOUT);
 	}
 
 	// mount the memory card

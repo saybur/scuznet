@@ -98,12 +98,16 @@
 #define DEBUG_FATAL                               0xEF // 2
 
 /*
- * Fatal error codes. Codes 1-4 are reserved for the hard drive devices.
+ * Fatal error codes. Codes 1-4 are reserved for the hard drive devices. This
+ * first batch are the long flash codes.
  */
 #define FATAL_CONFIG_FILE                         5
 #define FATAL_CONFIG_LINE_READ                    6
-#define FATAL_BROWNOUT                            7
+#define FATAL_GENERAL                             7
 #define FATAL_MEM_MOUNT_FAILED                    8
+// short codes
+#define FATAL_BROWNOUT                            2
+#define FATAL_STACK_CORRUPTED                     3
 
 // the LED on and off time for each flash, in milliseconds
 #define LED_LONG_FLASH                            500
