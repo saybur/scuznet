@@ -208,8 +208,16 @@ static int config_handler(
 		}
 		else if (strequ(name, str_file))
 		{
-			config_hdd[hddsel].filename = strdup(value);
-			return 1;
+			if (strlen(value) < HDD_FILENAME_SIZE)
+			{
+				strncpy(config_hdd[hddsel].filename, value,
+					sizeof(config_hdd[hddsel].filename));
+				return 1;
+			}
+			else
+			{
+				return 0;
+			}
 		}
 		else if (strequ(name, str_size))
 		{
@@ -264,7 +272,6 @@ void config_read(uint8_t* target_masks)
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		config_hdd[i].id = 255;
-		config_hdd[i].filename = NULL;
 		config_hdd[i].lba = 0;
 		config_hdd[i].size = 0;
 		config_hdd[i].mode = HDD_MODE_NORMAL;
