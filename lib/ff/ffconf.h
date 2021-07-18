@@ -113,10 +113,10 @@
 */
 
 // scuznet change: this auto-toggles LFN based on MCU memory capacity
-#if defined(__ATxmega64A3U__) || defined(__AVR_ATxmega64A3U__)
-	#define FF_USE_LFN		0
-#else
+#if defined(USE_EXFAT)
 	#define FF_USE_LFN		1
+#else
+	#define FF_USE_LFN		0
 #endif
 //#define FF_USE_LFN		0
 #define FF_MAX_LFN		255
@@ -236,10 +236,10 @@
 /  buffer in the filesystem object (FATFS) is used for the file data transfer. */
 
 // scuznet change: this auto-toggles exFAT support based on MCU memory capacity
-#if defined(__ATxmega64A3U__) || defined(__AVR_ATxmega64A3U__)
-	#define FF_FS_EXFAT		0
-#else
+#if defined(USE_EXFAT)
 	#define FF_FS_EXFAT		1
+#else
+	#define FF_FS_EXFAT		0
 #endif
 //#define FF_FS_EXFAT		0
 /* This option switches support for exFAT filesystem. (0:Disable or 1:Enable)
