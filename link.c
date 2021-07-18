@@ -103,9 +103,6 @@ static const __flash uint8_t inquiry_data_d[255] = {
 // the last-seen identify value
 static uint8_t last_identify;
 
-// buffers and headers used during the reading operation
-static uint8_t read_buffer[6];
-
 // the incremental packet counter used during packet read operations by
 // the Nuvo protocol
 static uint8_t rx_packet_id = 0;
@@ -471,6 +468,8 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 
 static void link_nuvo_read_packet(void)
 {
+	uint8_t read_buffer[4];
+
 	if ((net_header.stath) & 3)
 	{
 		// broadcast/multicast set
@@ -595,6 +594,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	}
 	else
 	{
+		uint8_t read_buffer[6];
 		debug(DEBUG_LINK_RX_STARTING);
 
 		/*
