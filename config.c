@@ -268,17 +268,18 @@ static int config_handler(
 
 void config_read(uint8_t* target_masks)
 {
+	*target_masks = 0;
+
 	// initialize GPIO and hard drive structs
 	GLOBAL_CONFIG_REGISTER = 0x00;
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		config_hdd[i].id = 255;
 		config_hdd[i].lba = 0;
+		config_hdd[i].filename[0] = '\0';
 		config_hdd[i].size = 0;
 		config_hdd[i].mode = HDD_MODE_NORMAL;
 	}
-	
-	*target_masks = 0;
 
 	// open the file off the memory card
 	FIL fil;
@@ -322,7 +323,7 @@ void config_read(uint8_t* target_masks)
 	}
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
-		if (config_hdd[i].id < 7 && config_hdd[i].filename != NULL)
+		if (config_hdd[i].id < 7)
 		{
 			config_hdd[i].mask = 1 << config_hdd[i].id;
 			if (! (config_hdd[i].mask & used_masks))
