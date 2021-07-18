@@ -39,12 +39,6 @@ static const __flash uint8_t inquiry_data[] = {
 	'0', '.', '1', 'a'
 };
 
-// READ CAPACITY information
-static uint8_t capacity_data[8] = {
-	0x00, 0x00, 0x00, 0x00, // size in blocks, inits to 0
-	0x00, 0x00, 0x02, 0x00  // 512 byte blocks
-};
-
 // track global state of the whole subsystem
 static HDDSTATE state = HDD_NOINIT;
 
@@ -54,10 +48,8 @@ static uint8_t id = 0;
 static uint8_t cmd[10];
 
 // generic buffer for READ/WRITE BUFFER commands
+#define MEMORY_BUFFER_OFFSET 600 // from front of global buffer
 #define MEMORY_BUFFER_LENGTH 68
-static uint8_t mem_buffer[MEMORY_BUFFER_LENGTH] = {
-	0x00, 0x00, 0x00, 0x40
-};
 
 /*
  * ============================================================================
@@ -66,9 +58,10 @@ static uint8_t mem_buffer[MEMORY_BUFFER_LENGTH] = {
  */
 
 /*
- * Sets the size of the capacity data array to match the current volume.
+ * Given a pointer to a four byte array of capacity information, this sets the
+ * values to match the current volume.
  */
-static void hdd_update_capacity()
+static void hdd_update_capacity(uint8_t* arr)
 {
 	/*
 	 * We strip off the low 12 bits to conform with the sizing reported by the
@@ -76,10 +69,10 @@ static void hdd_update_capacity()
 	 * readable block for the command.
 	 */
 	uint32_t last = (config_hdd[id].size & 0xFFFFF000) - 1;
-	capacity_data[0] = (uint8_t) (last >> 24);
-	capacity_data[1] = (uint8_t) (last >> 16);
-	capacity_data[2] = (uint8_t) (last >> 8);
-	capacity_data[3] = (uint8_t) last;
+	arr[0] = (uint8_t) (last >> 24);
+	arr[1] = (uint8_t) (last >> 16);
+	arr[2] = (uint8_t) (last >> 8);
+	arr[3] = (uint8_t) last;
 }
 
 /*
@@ -191,6 +184,8 @@ static void hdd_cmd_inquiry()
 
 static void hdd_cmd_read_capacity()
 {
+	uint8_t resp[8];
+
 	if (cmd[1] & 1)
 	{
 		// RelAdr set, we're not playing that game
@@ -198,8 +193,15 @@ static void hdd_cmd_read_capacity()
 	}
 	else
 	{
-		hdd_update_capacity();
-		logic_data_in(capacity_data, 8);
+		// set number of sectors
+		hdd_update_capacity(resp);
+		// sectors fixed at 512 bytes
+		resp[4] = 0x00;
+		resp[5] = 0x00;
+		resp[6] = 0x02;
+		resp[7] = 0x00;
+
+		logic_data_in(resp, 8);
 		logic_status(LOGIC_STATUS_GOOD);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 	}
@@ -405,7 +407,7 @@ static void hdd_cmd_mode_sense()
 	uint8_t cmd_page = cmd[2] & 0x3F;
 
 	// reset result length values
-	uint8_t buffer[128];
+	uint8_t* buffer = global_buffer;
 	buffer[0] = 0;
 	buffer[1] = 0;
 
@@ -577,6 +579,7 @@ static void hdd_cmd_mode_sense()
 	}
 
 	// rigid disk geometry page
+	uint8_t cap[4];
 	uint8_t cyl[3];
 	if (cmd_page == 0x04 || cmd_page == 0x3F)
 	{
@@ -588,10 +591,10 @@ static void hdd_cmd_mode_sense()
 		 * volume capacity. With a fixed 512 byte sector size, this allows
 		 * incrementing in 4096 block steps, or 2MB each.
 		 */
-		hdd_update_capacity();
-		cyl[0] = capacity_data[0] >> 4;
-		cyl[1] = (capacity_data[0] << 4) | (capacity_data[1] >> 4);
-		cyl[2] = (capacity_data[1] << 4) | (capacity_data[2] >> 4);
+		hdd_update_capacity(cap);
+		cyl[0] = cap[0] >> 4;
+		cyl[1] = (cap[0] << 4) | (cap[1] >> 4);
+		cyl[2] = (cap[1] << 4) | (cap[2] >> 4);
 
 		buffer[mode_pos++] = 0x04;
 		buffer[mode_pos++] = 0x16;
@@ -779,8 +782,14 @@ static void hdd_cmd_read_buffer()
 		length = MEMORY_BUFFER_LENGTH;
 	}
 
+	// rewrite the header
+	global_buffer[MEMORY_BUFFER_OFFSET] = 0x00;
+	global_buffer[MEMORY_BUFFER_OFFSET + 1] = 0x00;
+	global_buffer[MEMORY_BUFFER_OFFSET + 2] = 0x00;
+	global_buffer[MEMORY_BUFFER_OFFSET + 3] = 0x40;
+
 	// send the data
-	logic_data_in(mem_buffer, length);
+	logic_data_in(global_buffer + MEMORY_BUFFER_OFFSET, length);
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
@@ -818,7 +827,7 @@ static void hdd_cmd_write_buffer()
 	{
 		phy_data_ask();
 	}
-	logic_data_out(mem_buffer + 4, length);
+	logic_data_out(global_buffer + MEMORY_BUFFER_OFFSET + 4, length);
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
