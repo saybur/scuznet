@@ -113,8 +113,7 @@ static uint8_t rx_packet_id = 0;
 // the value we use as a flag to see if we need to ask for a reselection
 static uint8_t asked_for_reselection = 0;
 
-// the "ROM" (configuration file) and dynamically configured MAC addresses
-static uint8_t mac_rom[6];
+// the dynamically configured MAC address
 static uint8_t mac_dyn[6];
 
 /*
@@ -204,7 +203,7 @@ static void link_cmd_inquiry(uint8_t* cmd)
 			// 6 bytes of ROM MAC
 			for (uint8_t i = 0; i < 6; i++)
 			{
-				phy_data_offer(mac_rom[i]);
+				phy_data_offer(config_enet.mac[i]);
 			}
 			// 14 bytes of 0x00
 			for (uint8_t i = 0; i < 14; i++)
@@ -684,7 +683,6 @@ void link_init()
 	{
 		for (uint8_t i = 0; i < 6; i++)
 		{
-			mac_rom[i] = config_enet.mac[i];
 			mac_dyn[i] = config_enet.mac[i];
 		}
 		net_set_filter(NET_FILTER_UNICAST | NET_FILTER_BROADCAST);
