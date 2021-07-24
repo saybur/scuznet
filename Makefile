@@ -5,7 +5,7 @@
 
 OPTIONS := -DHW_VXXX -DDEBUGGING
 PROGRAMMER := avrispv2
-MCU := atxmega64a3u
+MCU := atxmega192a3u
 
 # ============================================================================
 #  Use caution editing the following values.
