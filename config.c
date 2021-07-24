@@ -306,6 +306,14 @@ void config_read(uint8_t* target_masks)
 	}
 	f_close(&fil);
 
+	// override configuration file if asked
+#ifdef FORCE_NUVO
+	config_enet.type = LINK_NUVO;
+#endif
+#ifdef FORCE_DAYNA
+	config_enet.type = LINK_DAYNA;
+#endif
+
 	/*
 	 * Calculate the PHY masks requested from the configuration file, and
 	 * disable hard drives with invalid values.
