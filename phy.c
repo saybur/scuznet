@@ -110,21 +110,44 @@
 #define dbp_assert()          PHY_PORT_T_DBP.OUT |=  PHY_PIN_T_DBP
 #define dbp_release()         PHY_PORT_T_DBP.OUT &= ~PHY_PIN_T_DBP
 
+#define asm_req_assert        "sbi %[req_out], %[req_bp] \n\t"
+#define asm_req_release       "cbi %[req_out], %[req_bp] \n\t"
+#define asm_req_def           [req_bp] "i" (PHY_PIN_T_REQ_bp), \
+                              [req_out] "I" (&(PHY_PORT_T_REQ.OUT))
+#define asm_dbp_assert        "sbi %[dbp_out], %[dbp_bp] \n\t"
+#define asm_dbp_release       "cbi %[dbp_out], %[dbp_bp] \n\t"
+#define asm_dbp_def           [dbp_bp] "i" (PHY_PIN_T_DBP_bp), \
+                              [dbp_out] "I" (&(PHY_PORT_T_DBP.OUT))
+
 #ifdef PHY_PORT_DATA_IN_OE
 	#define doe_off()         PHY_PORT_DOE.OUT   |=  PHY_PIN_DOE
 	#define doe_on()          PHY_PORT_DOE.OUT   &= ~PHY_PIN_DOE
+	#define asm_doe_off       "sbi %[doe_out], %[doe_bp] \n\t"
+	#define asm_doe_on        "cbi %[doe_out], %[doe_bp] \n\t"
+	#define asm_doe_def       [doe_bp] "i" (PHY_PIN_DOE_bp), \
+                              [doe_out] "I" (&(PHY_PORT_DOE.OUT))
 #else
 	#define doe_off()
 	#define doe_on()
+	#define asm_doe_on
+	#define asm_doe_off
+	#define asm_doe_def
 #endif
 
 #ifdef PHY_PORT_DATA_IN_CLOCK
 	#define dclk_rise()       PHY_PORT_DCLK.OUT  |=  PHY_PIN_DCLK
 	#define dclk_fall()       PHY_PORT_DCLK.OUT  &= ~PHY_PIN_DCLK
+	#define asm_dclk_rise     "sbi %[dclk_out], %[dclk_bp] \n\t"
+	#define asm_dclk_fall     "cbi %[dclk_out], %[dclk_bp] \n\t"
+	#define asm_dclk_def      [dclk_bp] "i" (PHY_PIN_DCLK_bp), \
+                              [dclk_out] "I" (&(PHY_PORT_DCLK.OUT))
 #else
 	#define dclk_rise()
 	#define dclk_fall()       _NOP()
-#endif 
+	#define asm_dclk_rise
+	#define asm_dclk_fall     "nop \n\t"
+	#define asm_dclk_def
+#endif
 
 /*
  * Duration in cycles after /BSY goes up that arbitration start should occur.
@@ -142,10 +165,9 @@
 
 /*
  * Lookup values needed to swap a reversed port order back to normal, or take
- * a normal value and reverse it. These are in SRAM to improve performance,
- * aligned for faster lookups (in theory).
+ * a normal value and reverse it. These are stored aligned to a 256 byte boundry
+ * for the assembly code.
  */
-#ifdef PHY_PORT_DATA_IN_REVERSED
 const __flash uint8_t phy_reverse_table[256] __attribute__ ((aligned (256))) = {
 	0, 128, 64, 192, 32, 160, 96, 224, 16, 144, 80, 208, 48, 176, 112, 240, 8, 
 	136, 72, 200, 40, 168, 104, 232, 24, 152, 88, 216, 56, 184, 120, 248, 4, 
@@ -164,13 +186,13 @@ const __flash uint8_t phy_reverse_table[256] __attribute__ ((aligned (256))) = {
 	135, 71, 199, 39, 167, 103, 231, 23, 151, 87, 215, 55, 183, 119, 247, 15, 
 	143, 79, 207, 47, 175, 111, 239, 31, 159, 95, 223, 63, 191, 127, 255
 };
-#endif
 
 /*
  * Truth table for parity calculations when outputting data, and for checking
  * the number of bits set in a byte more generally (we should probably begin
  * checking that when responding to selection). As with the above array, these
- * are stored in SRAM aligned to a 256 byte boundry for improved performance. 
+ * are stored aligned to a 256 byte boundry to allow the assembly code to
+ * function correctly.
  */
 const __flash uint8_t phy_bits_set[256] __attribute__ ((aligned (256))) = {
 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 
@@ -185,6 +207,12 @@ const __flash uint8_t phy_bits_set[256] __attribute__ ((aligned (256))) = {
 	4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 
 	6, 7, 6, 7, 7, 8
 };
+
+/*
+ * Aliases for code readability.
+ */
+#define parity_enabled()        (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_PARITY)
+
 
 /*
  * Stores the bitmask of the target currently active on the bus. This is only
@@ -219,6 +247,43 @@ static volatile uint8_t owned_masks;
 static volatile uint8_t arbitration_target_out;
 static volatile uint8_t arbitration_target_in;
 static volatile uint8_t arbitration_block_mask;
+
+/*
+ * ============================================================================
+ *   LOW-LEVEL INPUT/OUTPUT CALLS
+ * ============================================================================
+ * 
+ * These implement low-level reading and writing on the bus. The first two are
+ * used to read or write a snapshot of the data bus, regardless of logic. The
+ * next four handle bulk data transfers, both for internal memory buffers and
+ * USART-based streaming.
+ * 
+ * For the bulk data transfer functions:
+ * 
+ * 1) The T flag is used to indicate the operation should be stopped early.
+ *    This is set asynchronously to the function call via interrupts.
+ * 2) Each takes an 8-bit count value, which is the number of bytes to
+ *    transfer, with 0 indicating 256 bytes.
+ * 3) All values will be transferred unless the T flag is set. The byte counter
+ *    may not be reliable, so it is not returned: use the T flag as an
+ *    indication of failure.
+ * 4) The inline assembly is quite ugly but is needed to support the T flag
+ *    and aligned memory access of the lookup tables. If there is a better
+ *    approach please let the author know :)
+ * 
+ * These are reliant on the parity table and reverse table being byte-aligned,
+ * which allows the low byte of the relevant pointer to directly look into the
+ * table.
+ */
+
+#define asm_data_in_def       [data_in] "p" (&(PHY_PORT_DATA_IN.IN))
+#define asm_data_out_def      [data_out] "p" (&(PHY_PORT_DATA_OUT.OUT))
+
+// skip next instruction (usually RJMP) if condition true
+#define asm_skip_if_ack_asrt  "sbis %[ack_in], %[ack_bp] \n\t"
+#define asm_skip_if_ack_rel   "sbic %[ack_in], %[ack_bp] \n\t"
+#define asm_ack_def           [ack_bp] "i" (PHY_PIN_R_ACK_bp), \
+                              [ack_in] "I" (&(PHY_PORT_R_ACK.IN))
 
 /*
  * Performs a raw read of the data bus and returns the result. This is the
@@ -264,6 +329,184 @@ static inline __attribute__((always_inline)) void phy_data_set(uint8_t data)
 }
 
 /*
+ * Reads X bytes from the data bus into memory at the given location.
+ */
+static inline __attribute__((always_inline)) void phy_get(
+		uint8_t* data, uint8_t count)
+{
+	__asm__ __volatile__(
+	    "loop_%=:"                      "\n\t"
+
+		// wait for /ACK to release
+	    "wait_ack_release_%=:"          "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_rel
+		"rjmp wait_ack_release_%="      "\n\t"
+
+		// drive /REQ, asking for a byte
+		asm_req_assert
+
+		// wait for /ACK to assert
+		"wait_ack_assert_%=:"           "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_asrt
+		"rjmp wait_ack_assert_%="       "\n\t"
+
+		/*
+		 * Read the byte on the wire, functionally the same as phy_data_get().
+		 * This value is read into ZL to allow for the reverse-lookup to occur
+		 * afterward.
+		 */
+#if defined(PHY_PORT_DATA_IN_OE) || defined(PHY_PORT_DATA_IN_CLOCK)
+		"cli"		                    "\n\t"
+		asm_dclk_rise
+		asm_doe_on
+		asm_dclk_fall
+		"lds %A[rev], %[data_in]"       "\n\t"
+		asm_doe_off
+		"sei"		                    "\n\t"
+#else
+        "lds %A[rev], %[data_in]"       "\n\t"
+#endif
+
+		// release /REQ
+		asm_req_release
+
+		// lookup the correct value
+#ifdef PHY_PORT_DATA_IN_REVERSED
+		"lpm __tmp_reg__, %a[rev]"      "\n\t"
+#else
+		"mov __tmp_reg__, %A[rev]"      "\n\t"
+#endif
+
+		// store the value
+		"st %a[ptr]+, __tmp_reg__"      "\n\t"
+
+		// loop if not done
+		"dec %[cnt]"                    "\n\t"
+		"brne loop_%="                  "\n\t"
+
+		// clean-up
+		"end_%=:"                       "\n\t"
+		"clr %A[rev]"                   "\n\t" // input operand reset
+		: [ptr] "+e" (data), [cnt] "+r" (count)
+		: [rev] "z" (phy_reverse_table),
+		  asm_data_in_def, asm_dclk_def, asm_doe_def, asm_req_def, asm_ack_def
+	);
+}
+
+/*
+ * Write X bytes from memory at the given location to the data bus. There are
+ * two versions of this call:
+ * 
+ * _set() will set without transmission parity, and
+ * _setp() will set with transmission each time.
+ * 
+ * The versions are otherwise identical, including the behavior where they will
+ * read one more byte than asked out of the given memory buffer. This should
+ * not normally be a problem unless at the extreme end of the stack, which
+ * is prevented (hopefully) by the memory checking code in main().
+ */
+static inline __attribute__((always_inline)) void phy_set(
+		uint8_t* data, uint8_t count)
+{
+	__asm__ __volatile__(
+		// fetch value for the first iteration
+		"ld __tmp_reg__, %a[ptr]+"       "\n\t"
+
+		// start of loop
+	    "loop_%=:"                      "\n\t"
+
+		// wait for /ACK to release
+	    "wait_ack_release_%=:"          "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_rel
+		"rjmp wait_ack_release_%="      "\n\t"
+
+		// put the value on the bus
+		"sts %[data_out], __tmp_reg__"  "\n\t"
+		"nop"                           "\n\t" // propagation delay
+
+		// drive /REQ, informing byte is ready
+		asm_req_assert
+
+		// fetch value for next iteration
+		"ld __tmp_reg__, %a[ptr]+"       "\n\t"
+
+		// wait for /ACK to assert
+		"wait_ack_assert_%=:"           "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_asrt
+		"rjmp wait_ack_assert_%="       "\n\t"
+
+		// release /REQ
+		asm_req_release
+
+		// loop if not done
+		"dec %[cnt]"                    "\n\t"
+		"brne loop_%="                  "\n\t"
+
+		// clean-up
+		"end_%=:"                       "\n\t"
+		: [ptr] "+e" (data), [cnt] "+r" (count)
+		: asm_data_out_def, asm_dbp_def, asm_req_def, asm_ack_def
+	);
+}
+static inline __attribute__((always_inline)) void phy_setp(
+		uint8_t* data, uint8_t count)
+{
+	__asm__ __volatile__(
+		// fetch value for the first iteration
+		"ld %A[bits], %a[ptr]+"         "\n\t"
+
+		// start of loop
+	    "loop_%=:"                      "\n\t"
+
+		// wait for /ACK to release
+	    "wait_ack_release_%=:"          "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_rel
+		"rjmp wait_ack_release_%="      "\n\t"
+
+		// put the value on the bus with parity
+		"sts %[data_out], %A[bits]"     "\n\t" // set data bus to value
+		asm_dbp_release
+		"lpm %A[bits], %a[bits]"        "\n\t" // get # bits set into ZL
+		"andi %A[bits], 1"              "\n\t" // is # bits set odd?
+		"brne parity_end_%="            "\n\t"
+		asm_dbp_assert                         // set if not already odd
+		"nop"                           "\n\t" // propagation delay
+		"parity_end_%=:"                "\n\t"
+
+		// drive /REQ, informing byte is ready
+		asm_req_assert
+
+		// fetch value for next iteration
+		"ld %A[bits], %a[ptr]+"         "\n\t"
+
+		// wait for /ACK to assert
+		"wait_ack_assert_%=:"           "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_asrt
+		"rjmp wait_ack_assert_%="       "\n\t"
+
+		// release /REQ
+		asm_req_release
+
+		// loop if not done
+		"dec %[cnt]"                    "\n\t"
+		"brne loop_%="                  "\n\t"
+
+		// clean-up
+		"end_%=:"                       "\n\t"
+		"clr %A[bits]"                  "\n\t" // input operand reset
+		: [ptr] "+e" (data), [cnt] "+r" (count)
+		: [bits] "z" (phy_bits_set),
+		  asm_data_out_def, asm_dbp_def, asm_req_def, asm_ack_def
+	);
+}
+
+/*
  * Releases any data bits and the parity line (/DB0-7, /DBP).
  */
 static inline __attribute__((always_inline)) void phy_data_clear(void)
@@ -271,6 +514,12 @@ static inline __attribute__((always_inline)) void phy_data_clear(void)
 	PHY_PORT_DATA_OUT.OUT = 0;
 	dbp_release();
 }
+
+/*
+ * ============================================================================
+ *  SETUP / UTILITY
+ * ============================================================================
+ */
 
 /*
  * Handles starting and stopping the PHY watchdog timer.
@@ -419,6 +668,16 @@ void phy_init(uint8_t mask)
 	 * when data flow on the bus has stopped.
 	 */
 	PHY_TIMER_WATCHDOG.INTCTRLA = TC_OVFINTLVL_LO_gc;
+
+	/*
+	 * Verify correct alignment of the tables. These must have 0x00 in their
+	 * low byte or errors will occur later in the assembly routines.
+	 */
+	if ((((uint16_t) phy_reverse_table) & 0xFF) != 0x00
+			|| (((uint16_t) phy_bits_set) & 0xFF) != 0x00)
+	{
+		fatal(FATAL_GENERAL, FATAL_MISALIGNED);
+	}
 }
 
 void phy_init_hold(void)
@@ -447,12 +706,19 @@ uint8_t phy_get_target(void)
 	#endif
 }
 
+/*
+ * ============================================================================
+ *  DATA TRANSFER
+ * ============================================================================
+ */
+
 void phy_data_offer(uint8_t data)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
 	phy_watchdog_start();
 
+	// TODO add T flag monitoring
 	while (phy_is_ack_asserted());
 	phy_data_set(data);
 	req_assert();
@@ -468,13 +734,15 @@ uint8_t phy_data_offer_block(uint8_t* data)
 	if (! phy_is_active()) return 0;
 	phy_watchdog_start();
 
-	for (uint16_t i = 0; i < 512; i++)
+	if (parity_enabled())
 	{
-		while (phy_is_ack_asserted());
-		phy_data_set(data[i]);
-		req_assert();
-		while (! phy_is_ack_asserted());
-		req_release();
+		phy_setp(data, 0);
+		phy_setp(data + 256, 0);
+	}
+	else
+	{
+		phy_set(data, 0);
+		phy_set(data + 256, 0);
 	}
 
 	phy_watchdog_stop();
@@ -593,6 +861,8 @@ uint8_t phy_data_ask(void)
 	if (! phy_is_active()) return 0;
 	phy_watchdog_start();
 
+	// TODO add T flag monitoring
+
 	// wait for initiator to be ready
 	while (phy_is_ack_asserted());
 
@@ -616,24 +886,12 @@ uint8_t phy_data_ask(void)
 
 uint8_t phy_data_ask_block(uint8_t* data)
 {
-	uint8_t v;
-
 	if (! phy_is_active()) return 0;
 	phy_watchdog_start();
 
-	for (uint16_t i = 0; i < 512; i++)
-	{
-		while (phy_is_ack_asserted());
-		req_assert();
-		while (! (phy_is_ack_asserted()));
-		v = phy_data_get();
-		req_release();
-		#ifdef PHY_PORT_DATA_IN_REVERSED
-			data[i] = phy_reverse_table[v];
-		#else
-			data[i] = v;
-		#endif
-	}
+	phy_get(data, 0);
+	phy_get(data + 256, 0);
+
 	phy_watchdog_stop();
 	return 1;
 }
@@ -713,6 +971,12 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 
 	phy_watchdog_stop();
 }
+
+/*
+ * ============================================================================
+ *  BUS CONTROL
+ * ============================================================================
+ */
 
 void phy_phase(uint8_t new_phase)
 {
@@ -846,9 +1110,7 @@ uint8_t phy_reselect(uint8_t target_mask)
 
 /*
  * ============================================================================
- *  
  *   INTERRUPT DEFINITIONS
- * 
  * ============================================================================
  * 
  * A description of these is included in this file at the beginning. Refer
@@ -1099,8 +1361,7 @@ ISR(PHY_ISR_RST_vect)
  * Invoked after an extended period of time where there is no data transfer
  * activity on the bus.
  */
-ISR(PHY_TIMER_WATCHDOG_vect)
+ISR(PHY_TIMER_WATCHDOG_vect, ISR_NAKED)
 {
-	// TODO placeholder
-	debug(DEBUG_PHY_TIMED_OUT);
+	__asm__ __volatile__("set");
 }

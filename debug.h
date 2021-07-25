@@ -109,6 +109,7 @@
 // short codes
 #define FATAL_BROWNOUT                            2
 #define FATAL_STACK_CORRUPTED                     3
+#define FATAL_MISALIGNED                          4
 
 // the LED on and off time for each flash, in milliseconds
 #define LED_LONG_FLASH                            500

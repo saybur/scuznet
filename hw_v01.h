@@ -169,7 +169,7 @@
 #define PHY_PIN_R_SEL           PIN3_bm
 #define PHY_PIN_R_ATN           PIN5_bm
 #define PHY_PIN_R_ACK           PIN2_bm
-#define PHY_PIN_R_ACK_BP        PIN2_bp
+#define PHY_PIN_R_ACK_bp        PIN2_bp
 #define PHY_PIN_R_DBP           PIN2_bm
 #define PHY_PIN_T_BSY           PIN0_bm
 #define PHY_PIN_T_SEL           PIN1_bm
@@ -177,11 +177,13 @@
 #define PHY_PIN_T_CD            PIN3_bm
 #define PHY_PIN_T_IO            PIN4_bm
 #define PHY_PIN_T_REQ           PIN6_bm
-#define PHY_PIN_T_REQ_BP        PIN6_bp
+#define PHY_PIN_T_REQ_bp        PIN6_bp
 #define PHY_PIN_T_DBP           PIN0_bm
-#define PHY_PIN_T_DBP_BP        PIN0_bp
+#define PHY_PIN_T_DBP_bp        PIN0_bp
 #define PHY_PIN_DOE             PIN0_bm
+#define PHY_PIN_DOE_bp          PIN0_bp
 #define PHY_PIN_DCLK            PIN1_bm
+#define PHY_PIN_DCLK_bp         PIN1_bp
 #define PHY_PIN_ACKEN           PIN7_bm
 // a few need pin configs as well
 #define PHY_CFG_R_SEL           PORTC.PIN1CTRL
