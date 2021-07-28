@@ -277,7 +277,7 @@ static volatile uint8_t arbitration_block_mask;
  */
 
 #define asm_data_in_def       [data_in] "p" (&(PHY_PORT_DATA_IN.IN))
-#define asm_data_out_def      [data_out] "p" (&(PHY_PORT_DATA_OUT.OUT))
+#define asm_data_out_def      [data_out] "e" (&(PHY_PORT_DATA_OUT.OUT))
 
 // skip next instruction (usually RJMP) if condition true
 #define asm_skip_if_ack_asrt  "sbis %[ack_in], %[ack_bp] \n\t"
@@ -438,7 +438,7 @@ static inline __attribute__((always_inline)) void phy_set(
 		"rjmp wait_ack_release_%="      "\n\t"
 
 		// put the value on the bus
-		"sts %[data_out], __tmp_reg__"  "\n\t"
+		"st %a[data_out], __tmp_reg__"  "\n\t"
 		"nop"                           "\n\t" // propagation delay
 
 		// drive /REQ, informing byte is ready
@@ -483,7 +483,7 @@ static inline __attribute__((always_inline)) void phy_setp(
 		"rjmp wait_ack_release_%="      "\n\t"
 
 		// put the value on the bus with parity
-		"sts %[data_out], %A[bits]"     "\n\t" // set data bus to value
+		"st %a[data_out], %A[bits]"     "\n\t" // set data bus to value
 		asm_dbp_release
 		"lpm %A[bits], %a[bits]"        "\n\t" // get # bits set into ZL
 		"andi %A[bits], 1"              "\n\t" // is # bits set odd?
