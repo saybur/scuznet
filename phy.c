@@ -335,16 +335,38 @@ static inline __attribute__((always_inline)) void phy_get(
 		uint8_t* data, uint8_t count)
 {
 	__asm__ __volatile__(
+		// wait for /ACK to release, then drive /REQ to ask for a byte
+		"wait_ack_first%=:"             "\n\t"
+		"brts end_%="                   "\n\t"
+		asm_skip_if_ack_rel
+		"rjmp wait_ack_first%="         "\n\t"
+		asm_req_assert
+
+		// nothing to store yet, so jump past the first part of the loop
+		"rjmp wait_ack_assert_%="       "\n\t"
+
+		// start of operation except for 1st pass (see above)
 	    "loop_%=:"                      "\n\t"
 
-		// wait for /ACK to release
+		// wait for /ACK to release, then drive /REQ to ask for a byte
 	    "wait_ack_release_%=:"          "\n\t"
 		"brts end_%="                   "\n\t"
 		asm_skip_if_ack_rel
 		"rjmp wait_ack_release_%="      "\n\t"
-
-		// drive /REQ, asking for a byte
 		asm_req_assert
+
+		/*
+		 * Before we wait for the remote system to respond, store the results
+		 * from the previous loop iteration, reversing the data if needed. This
+		 * step is also performed after the loop, to catch the last value from
+		 * the bus after the loop concludes.
+		 */
+#ifdef PHY_PORT_DATA_IN_REVERSED
+		"lpm __tmp_reg__, %a[rev]"      "\n\t"
+#else
+		"mov __tmp_reg__, %A[rev]"      "\n\t"
+#endif
+		"st %a[ptr]+, __tmp_reg__"      "\n\t"
 
 		// wait for /ACK to assert
 		"wait_ack_assert_%=:"           "\n\t"
@@ -372,19 +394,17 @@ static inline __attribute__((always_inline)) void phy_get(
 		// release /REQ
 		asm_req_release
 
-		// lookup the correct value
+		// loop if not done
+		"dec %[cnt]"                    "\n\t"
+		"brne loop_%="                  "\n\t"
+
+		// store the pending byte, same routine as earlier
 #ifdef PHY_PORT_DATA_IN_REVERSED
 		"lpm __tmp_reg__, %a[rev]"      "\n\t"
 #else
 		"mov __tmp_reg__, %A[rev]"      "\n\t"
 #endif
-
-		// store the value
 		"st %a[ptr]+, __tmp_reg__"      "\n\t"
-
-		// loop if not done
-		"dec %[cnt]"                    "\n\t"
-		"brne loop_%="                  "\n\t"
 
 		// clean-up
 		"end_%=:"                       "\n\t"
@@ -532,6 +552,7 @@ static inline __attribute__((always_inline)) void phy_watchdog_start(void)
 static inline __attribute__((always_inline)) void phy_watchdog_stop(void)
 {
 	PHY_TIMER_WATCHDOG.CTRLA = TC_CLKSEL_OFF_gc;
+	asm volatile("clt"); // clear T flag
 }
 
 void phy_init(uint8_t mask)
