@@ -379,17 +379,11 @@ static inline __attribute__((always_inline)) void phy_get(
 		 * This value is read into ZL to allow for the reverse-lookup to occur
 		 * afterward.
 		 */
-#if defined(PHY_PORT_DATA_IN_OE) || defined(PHY_PORT_DATA_IN_CLOCK)
-		"cli"		                    "\n\t"
 		asm_dclk_rise
 		asm_doe_on
 		asm_dclk_fall
 		"lds %A[rev], %[data_in]"       "\n\t"
 		asm_doe_off
-		"sei"		                    "\n\t"
-#else
-        "lds %A[rev], %[data_in]"       "\n\t"
-#endif
 
 		// release /REQ
 		asm_req_release
