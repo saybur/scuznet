@@ -536,17 +536,48 @@ static inline __attribute__((always_inline)) void phy_data_clear(void)
  */
 
 /*
- * Handles starting and stopping the PHY watchdog timer.
+ * Handles starting and stopping the PHY watchdog timer. This will optionally
+ * enable "timing out" if /ATN is asserted while running. When stopping, if the
+ * result is nonzero a timeout condition occurred.
  */
-static inline __attribute__((always_inline)) void phy_watchdog_start(void)
+static inline __attribute__((always_inline)) void phy_watchdog_start(uint8_t use_atn)
 {
+	// clear flags if set
+	PHY_REGISTER_STATUS &= ~PHY_STATUS_DATA_TIMEOUT_bm;
+	asm volatile("clt");
+
+	// restart the timer & set up interrupts
 	PHY_TIMER_WATCHDOG.CTRLFSET = TC_CMD_RESTART_gc;
+	PHY_TIMER_WATCHDOG.INTFLAGS |= PHY_TIMER_WATCHDOG_OVFIF_bm | PHY_TIMER_WATCHDOG_CCAIF_bm;
+	PHY_TIMER_WATCHDOG.INTCTRLA = TC_OVFINTLVL_LO_gc;
+	if (use_atn)
+	{
+		PHY_TIMER_WATCHDOG.INTCTRLB = TC_CCAINTLVL_LO_gc;
+	}
+	else
+	{
+		PHY_TIMER_WATCHDOG.INTCTRLB = TC_CCAINTLVL_OFF_gc;
+	}
+
+	// start the timer
 	PHY_TIMER_WATCHDOG.CTRLA = TC_CLKSEL_DIV1024_gc;
 }
-static inline __attribute__((always_inline)) void phy_watchdog_stop(void)
+static inline __attribute__((always_inline)) uint8_t phy_watchdog_stop(void)
 {
+	// stop the timer and associated interrupts
 	PHY_TIMER_WATCHDOG.CTRLA = TC_CLKSEL_OFF_gc;
-	asm volatile("clt"); // clear T flag
+	PHY_TIMER_WATCHDOG.INTCTRLA = TC_OVFINTLVL_OFF_gc;
+	PHY_TIMER_WATCHDOG.INTCTRLB = TC_CCAINTLVL_OFF_gc;
+
+	// store the timeout status for return
+	uint8_t v = PHY_REGISTER_STATUS & PHY_STATUS_DATA_TIMEOUT_bm;
+
+	// clear flags if set
+	PHY_REGISTER_STATUS &= ~PHY_STATUS_DATA_TIMEOUT_bm;
+	asm volatile("clt");
+
+	// provide results
+	return v;
 }
 
 void phy_init(uint8_t mask)
@@ -657,8 +688,9 @@ void phy_init(uint8_t mask)
 	 * Setup ISR edge sense. We need a few different things:
 	 * 
 	 * 1) Any time /RST gets asserted,
-	 * 2) Limited times /SEL starts being asserted, and
-	 * 2) The end of /BSY being asserted (by default).
+	 * 2) Limited times /ATN starts being asserted,
+	 * 3) Limited times /SEL starts being asserted, and
+	 * 4) The end of /BSY being asserted (by default).
 	 * 
 	 * We set these up, but we don't enable them until later when they are
 	 * needed.
@@ -666,8 +698,15 @@ void phy_init(uint8_t mask)
 	PHY_CFG_R_RST |= PORT_ISC_LEVEL_gc;
 	PHY_CFG_R_BSY |= PORT_ISC_FALLING_gc;
 	PHY_CFG_R_SEL |= PORT_ISC_RISING_gc;
+	PHY_CFG_R_ATN |= PORT_ISC_RISING_gc;
 	PHY_PORT_CTRL_IN.INT0MASK = PHY_PIN_R_SEL;
 	PHY_PORT_CTRL_IN.INT1MASK = PHY_PIN_R_BSY;
+
+	/*
+	 * Map the /ATN event channel to the appropriate timer capture channel.
+	 */
+	PHY_TIMER_WATCHDOG_CHMUX = PHY_CHMUX_ATN;
+	PHY_TIMER_WATCHDOG.CTRLD = TC_EVACT_CAPT_gc | PHY_TIMER_WATCHDOG_EVSEL;
 
 	/*
 	 * Setup timer that monitors the time elapsed since a DISCONNECT message
@@ -677,12 +716,6 @@ void phy_init(uint8_t mask)
 	 */
 	PHY_TIMER_DISCON.PER = PHY_TIMER_DISCON_DELAY;
 	PHY_TIMER_DISCON.CTRLA = TC_CLKSEL_DIV64_gc;
-
-	/*
-	 * Setup timer used to monitor REQ/ACK deadlocks and similar situations
-	 * when data flow on the bus has stopped.
-	 */
-	PHY_TIMER_WATCHDOG.INTCTRLA = TC_OVFINTLVL_LO_gc;
 
 	/*
 	 * Verify correct alignment of the tables. These must have 0x00 in their
@@ -731,7 +764,7 @@ void phy_data_offer(uint8_t data)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return;
 	if (! phy_is_active()) return;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	// TODO add T flag monitoring
 	while (phy_is_ack_asserted());
@@ -747,7 +780,7 @@ uint8_t phy_data_offer_block(uint8_t* data)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
 	if (! phy_is_active()) return 0;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	if (parity_enabled())
 	{
@@ -768,7 +801,7 @@ uint16_t phy_data_offer_bulk(uint8_t* data, uint16_t len)
 {
 	if (! (PHY_REGISTER_PHASE & 0x01)) return 0;
 	if (! phy_is_active()) return 0;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	for (uint16_t i = 0; i < len; i++)
 	{
@@ -790,7 +823,7 @@ uint16_t phy_data_offer_stream(USART_t* usart, uint16_t len)
 	if (! (PHY_REGISTER_PHASE & 0x01)) return len;
 	if (! phy_is_active()) return len;
 	if (len == 0) return len;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	// queue first byte
 	while (! (usart->STATUS & USART_DREIF_bm));
@@ -834,7 +867,7 @@ uint16_t phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 	if (! (PHY_REGISTER_PHASE & 0x01)) return len;
 	if (! phy_is_active()) return len;
 	if (len == 0) return len;
-	phy_watchdog_start();
+	phy_watchdog_start(1);
 
 	// queue first byte
 	while (! (usart->STATUS & USART_DREIF_bm));
@@ -874,7 +907,7 @@ uint16_t phy_data_offer_stream_atn(USART_t* usart, uint16_t len)
 uint8_t phy_data_ask(void)
 {
 	if (! phy_is_active()) return 0;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	// TODO add T flag monitoring
 
@@ -902,7 +935,7 @@ uint8_t phy_data_ask(void)
 uint8_t phy_data_ask_block(uint8_t* data)
 {
 	if (! phy_is_active()) return 0;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	phy_get(data, 0);
 	phy_get(data + 256, 0);
@@ -916,7 +949,7 @@ uint16_t phy_data_ask_bulk(uint8_t* data, uint16_t len)
 	uint8_t v;
 
 	if (! phy_is_active()) return 0;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	for (uint16_t i = 0; i < len; i++)
 	{
@@ -944,7 +977,7 @@ void phy_data_ask_stream(USART_t* usart, uint16_t len)
 	// note that ISR has the opposite guard
 	if (! phy_is_active()) return;
 	if (len == 0) return;
-	phy_watchdog_start();
+	phy_watchdog_start(0);
 
 	uint8_t not_first = 0;
 	do
@@ -1373,10 +1406,49 @@ ISR(PHY_ISR_RST_vect)
 }
 
 /*
- * Invoked after an extended period of time where there is no data transfer
- * activity on the bus.
+ * ============================================================================
+ *   INTERRUPT DEFINITIONS
+ * ============================================================================
+ * 
+ * These two ISRs implement the data transfer stop system. This works as
+ * follows:
+ * 
+ * - The data transfer routines will monitor either the T flag or the PHY
+ *   status register timeout flag, which are equivalent. If either flag becomes
+ *   true, it is a sign that the data transfer routine must be stopped.
+ * - To start the timer, invoke phy_watchdog_start() with the appropriate
+ *   settings. See that function for details.
+ * - The following ISRs will set the monitored flags.
+ * - The first one occurs when the timer overflows due to the data transfer
+ *   taking too long.
+ * - The second one is optional and will set the flags when /ATN is asserted
+ *   during a data transfer.
+ * 
+ * These are ISR_NAKED to allow for the T flag setting to affect running data
+ * transfers. Only basic asm is used and no other bits of SREG are modified.
  */
-ISR(PHY_TIMER_WATCHDOG_vect, ISR_NAKED)
+
+// needed for getting raw addresses/values in the basic asm below
+// https://gcc.gnu.org/onlinedocs/gcc-4.8.5/cpp/Stringification.html
+#define XSTRINGIFY(s)   #s
+#define STRINGIFY(s)    XSTRINGIFY(s)
+
+ISR(PHY_TIMER_WATCHDOG_OVF_vect, ISR_NAKED)
 {
-	__asm__ __volatile__("set");
+	__asm__ __volatile__(
+		"set"               "\n\t"
+		"sbi " STRINGIFY(PHY_REGISTER_STATUS_addr)   ","
+		       STRINGIFY(PHY_STATUS_DATA_TIMEOUT_bp) "\n\t"
+		"reti"              "\n\t"
+		);
+}
+
+ISR(PHY_TIMER_WATCHDOG_CCA_vect, ISR_NAKED)
+{
+	__asm__ __volatile__(
+		"set"               "\n\t"
+		"sbi " STRINGIFY(PHY_REGISTER_STATUS_addr) ","
+		       STRINGIFY(PHY_STATUS_DATA_TIMEOUT_bp) "\n\t"
+		"reti"              "\n\t"
+		);
 }

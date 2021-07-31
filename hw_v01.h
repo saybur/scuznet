@@ -189,9 +189,11 @@
 #define PHY_CFG_R_SEL           PORTC.PIN1CTRL
 #define PHY_CFG_R_BSY           PORTC.PIN4CTRL
 #define PHY_CFG_R_RST           PORTC.PIN6CTRL
+#define PHY_CFG_R_ATN           PORTC.PIN5CTRL
 // and event channel information
 #define PHY_CHMUX_RST           EVSYS_CHMUX_PORTC_PIN6_gc
 #define PHY_CHMUX_BSY           EVSYS_CHMUX_PORTC_PIN4_gc
+#define PHY_CHMUX_ATN           EVSYS_CHMUX_PORTC_PIN5_gc
 
 /*
  * Interrupt information for the port containing the /BSY and /SEL in lines.

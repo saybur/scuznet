@@ -86,11 +86,17 @@
  * PHY_STATUS_RESELECT_PARITY_bm: if set, the parity bit needs to be set when
  * the reselection routine is trying to reselect the initiator. This is not
  * used when parity is disabled.
+ * 
+ * PHY_STATUS_DATA_TIMEOUT: if set, a timeout has occurred during a data
+ * transfer phase. This is only monitored if the appropriate watchdog timer is
+ * enabled. Refer to the implementation for details.
  */
 #define PHY_STATUS_ACTIVE_bm            _BV(0)
 #define PHY_STATUS_CONTINUED_bm         _BV(1)
 #define PHY_STATUS_ASK_RESELECT_bm      _BV(3)
 #define PHY_STATUS_RESELECT_PARITY_bm   _BV(4)
+#define PHY_STATUS_DATA_TIMEOUT_bp      5
+#define PHY_STATUS_DATA_TIMEOUT_bm      _BV(PHY_STATUS_DATA_TIMEOUT_bp)
 
 #define phy_is_active()         (PHY_REGISTER_STATUS & PHY_STATUS_ACTIVE_bm)
 #define phy_is_continued()      (PHY_REGISTER_STATUS & PHY_STATUS_CONTINUED_bm)

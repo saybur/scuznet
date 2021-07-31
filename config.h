@@ -241,8 +241,9 @@ extern uint8_t global_buffer[GLOBAL_BUFFER_SIZE];
  * 
  * For details on what these do, refer to the PHY documentation.
  */
-#define PHY_REGISTER_STATUS     GPIOR2
-#define PHY_REGISTER_PHASE      GPIOR3
+#define PHY_REGISTER_STATUS         GPIOR2
+#define PHY_REGISTER_STATUS_addr    0x02
+#define PHY_REGISTER_PHASE          GPIOR3
 
 /*
  * The timer used for tracking the duration of time since /BSY was last seen
@@ -288,10 +289,17 @@ extern uint8_t global_buffer[GLOBAL_BUFFER_SIZE];
 
 /*
  * Timer used to track bus deadlock conditions and respond to situations where
- * the REQ/ACK interlock has failed.
+ * the REQ/ACK interlock has failed. This is also used to monitor /ATN
+ * assertion in some conditions.
  */
-#define PHY_TIMER_WATCHDOG      TCE1
-#define PHY_TIMER_WATCHDOG_vect TCE1_OVF_vect
+#define PHY_TIMER_WATCHDOG              TCE1
+#define PHY_TIMER_WATCHDOG_OVF_vect     TCE1_OVF_vect
+#define PHY_TIMER_WATCHDOG_CCA_vect     TCE1_CCA_vect
+#define PHY_TIMER_WATCHDOG_CHMUX        EVSYS.CH5MUX
+#define PHY_TIMER_WATCHDOG_EVSEL        TC_EVSEL_CH5_gc
+#define PHY_TIMER_WATCHDOG_OVFIF_bm     TC1_OVFIF_bm
+#define PHY_TIMER_WATCHDOG_CCAIF_bm     TC1_CCAIF_bm
+
 
 /*
  * ============================================================================
