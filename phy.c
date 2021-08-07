@@ -131,7 +131,6 @@
 	#define doe_on()
 	#define asm_doe_on
 	#define asm_doe_off
-	#define asm_doe_def
 #endif
 
 #ifdef PHY_PORT_DATA_IN_CLOCK
@@ -146,7 +145,6 @@
 	#define dclk_fall()       _NOP()
 	#define asm_dclk_rise
 	#define asm_dclk_fall     "nop \n\t"
-	#define asm_dclk_def
 #endif
 
 /*
@@ -405,7 +403,14 @@ static inline __attribute__((always_inline)) void phy_get(
 		"clr %A[rev]"                   "\n\t" // input operand reset
 		: [ptr] "+e" (data), [cnt] "+r" (count)
 		: [rev] "z" (phy_reverse_table),
-		  asm_data_in_def, asm_dclk_def, asm_doe_def, asm_req_def, asm_ack_def
+		  asm_data_in_def,
+#ifdef PHY_PORT_DATA_IN_CLOCK
+		  asm_dclk_def,
+#endif
+#ifdef PHY_PORT_DATA_IN_OE
+		  asm_doe_def,
+#endif
+		  asm_req_def, asm_ack_def
 	);
 }
 
