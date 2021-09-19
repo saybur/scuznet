@@ -124,7 +124,7 @@
 #define debug_enabled()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_DEBUG)
 #define debug_verbose()       (GLOBAL_CONFIG_REGISTER & GLOBAL_FLAG_VERBOSE)
 
-#ifdef DEBUGGING
+// calls for sending bytes to the print-style debugging system
 static inline __attribute__((always_inline)) void debug(uint8_t v)
 {
 	if (debug_enabled())
@@ -144,19 +144,6 @@ static inline __attribute__((always_inline)) void debug_dual(
 		DEBUG_USART.DATA = p;
 	}
 }
-#else
-// silence the compiler when debugging is turned off
-static inline __attribute__((always_inline)) void debug(
-		__attribute__((unused)) uint8_t v)
-{
-	// do nothing
-}
-static inline __attribute__((always_inline)) void debug(
-		__attribute__((unused)) uint8_t v, __attribute__((unused)) uint8_t p)
-{
-	// do nothing
-}
-#endif
 
 /*
  * Sets up the debugging system, including the USART and the reporting LEDs.

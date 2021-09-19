@@ -3,7 +3,7 @@
 #  the programmer being used.
 # ============================================================================
 
-OPTIONS := -DHW_VXXX -DDEBUGGING
+OPTIONS := -DHW_VXXX
 PROGRAMMER := avrispv2
 MCU := atxmega192a3u
 
