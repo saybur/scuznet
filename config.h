@@ -86,7 +86,8 @@ extern ENETConfig config_enet;
 typedef enum {
 	HDD_MODE_NORMAL,            // access is always through FAT
 	HDD_MODE_FAST,              // low-level access if file contiguous
-	HDD_MODE_FORCEFAST          // always low-level access (dangerous!)
+	HDD_MODE_FORCEFAST,         // always low-level access (dangerous!)
+	HDD_MODE_CDROM              // provided image is a CD-ROM [access via FAT]
 } HDDMODE;
 
 /*

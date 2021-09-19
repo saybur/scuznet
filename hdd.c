@@ -912,7 +912,7 @@ uint16_t hdd_init(void)
 			 * asked to create it.
 			 */
 			res = f_stat(config_hdd[i].filename, &fno);
-			if (res == FR_NO_FILE)
+			if (res == FR_NO_FILE && config_hdd[i].mode != HDD_MODE_CDROM)
 			{
 				if (config_hdd[i].size > 0)
 				{
@@ -967,7 +967,14 @@ uint16_t hdd_init(void)
 				err += (uint8_t) res;
 				return err;
 			}
-			config_hdd[i].size = (f_size(fp) >> 9); // store in 512 byte sectors
+			if (config_hdd[i].mode == HDD_MODE_CDROM)
+			{
+				config_hdd[i].size = (f_size(fp) >> 11); // store in 2048 byte sectors
+			}
+			else
+			{
+				config_hdd[i].size = (f_size(fp) >> 9); // store in 512 byte sectors
+			}
 			if (config_hdd[i].size == 0)
 			{
 				err += (uint8_t) FR_INVALID_OBJECT;

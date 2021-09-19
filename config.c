@@ -28,6 +28,7 @@
  * The configuration keys and values we check for, in flash to save precious
  * SRAM for other uses.
  */
+static const __flash char str_cdrom[] =     "cdrom";
 static const __flash char str_dayna[] =     "dayna";
 static const __flash char str_debug[] =     "debug";
 static const __flash char str_driver[] =    "driver";
@@ -240,6 +241,11 @@ static int config_handler(
 			else if (strequ(value, str_normal))
 			{
 				config_hdd[hddsel].mode = HDD_MODE_NORMAL;
+				return 1;
+			}
+			else if (strequ(value, str_cdrom))
+			{
+				config_hdd[hddsel].mode = HDD_MODE_CDROM;
 				return 1;
 			}
 			else

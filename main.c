@@ -26,6 +26,7 @@
 #include "enc.h"
 #include "init.h"
 #include "hdd.h"
+#include "cdrom.h"
 #include "link.h"
 #include "logic.h"
 #include "net.h"
@@ -57,9 +58,19 @@ static void main_handle(void)
 			if (target == config_hdd[i].mask)
 			{
 				searching = 0;
-				if (! hdd_main(i))
+				if (config_hdd[i].mode == HDD_MODE_CDROM)
 				{
-					searching = 1;
+					if (! cdrom_main(i))
+					{
+						searching = 1;
+					}
+				}
+				else
+				{
+					if (! hdd_main(i))
+					{
+						searching = 1;
+					}
 				}
 			}
 		}

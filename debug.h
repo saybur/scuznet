@@ -40,6 +40,12 @@
 #define DEBUG_LOGIC_SET_SENSE                     0x54 // 1
 #define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E // 1
 #define DEBUG_LOGIC_MESSAGE                       0x5F // 1
+#define DEBUG_CDROM_READ_STARTING                 0x60 // 0
+#define DEBUG_CDROM_READ_OKAY                     0x61 // 0
+#define DEBUG_CDROM_MEM_SEEK_ERROR                0x62 // 1
+#define DEBUG_CDROM_MEM_READ_ERROR                0x63 // 1
+#define DEBUG_CDROM_SIZE_EXCEEDED                 0x64 // 0
+#define DEBUG_CDROM_INVALID_OPERATION             0x65 // 0
 #define DEBUG_HDD_MODE_SENSE                      0x7B // 0
 #define DEBUG_HDD_MODE_SELECT                     0x7C // 0
 #define DEBUG_HDD_READ_BUFFER                     0x7D // 0
