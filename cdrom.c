@@ -35,6 +35,7 @@
 #include "config.h"
 #include "debug.h"
 #include "logic.h"
+#include "mode.h"
 #include "cdrom.h"
 
 /*
@@ -451,6 +452,13 @@ uint8_t cdrom_main(uint8_t id)
 	{
 		case 0x12: // INQUIRY
 			cdrom_cmd_inquiry(id, cmd);
+			break;
+		case 0x1A: // MODE SENSE(6)
+		case 0x5A: // MODE SENSE(10)
+			mode_sense(cmd, MODE_TYPE_CDROM, config_hdd[id].size);
+			break;
+		case 0x15: // MODE SELECT(6)
+			mode_select(cmd);
 			break;
 		case 0x08: // READ(6) [not in spec, but we'll allow it]
 		case 0x28: // READ(10)

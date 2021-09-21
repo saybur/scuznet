@@ -38,6 +38,9 @@
 #define DEBUG_LOGIC_BAD_CMD                       0x52 // 1
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53 // 0
 #define DEBUG_LOGIC_SET_SENSE                     0x54 // 1
+#define DEBUG_MODE_SENSE                          0x55 // 0
+#define DEBUG_MODE_SELECT                         0x56 // 0
+#define DEBUG_MODE_SENSE_UNKNOWN_TYPE             0x5D // 1
 #define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E // 1
 #define DEBUG_LOGIC_MESSAGE                       0x5F // 1
 #define DEBUG_CDROM_READ_STARTING                 0x60 // 0
