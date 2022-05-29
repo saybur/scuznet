@@ -6,6 +6,20 @@
 
 <br>
 
+<div align = center>
+
+---
+
+[![Button Tools]][Tools]   
+[![Button Software]][Software]   
+[![Button Hardware]][Hardware] 
+
+---
+
+</div>
+
+<br>
+
 ## Status
 
 There are things that are known to not work correctly, <br>
@@ -39,9 +53,22 @@ has similar limitations.
 
 <!----------------------------------------------------------------------------->
 
+[New Issue]: https://github.com/saybur/scuznet/issues
+
+[Hardware]: Hardware
+[Software]: Software
+[License]: LICENSE
+[Tools]: Tools
+
+
+<!---------------------------------{ Badges }---------------------------------->
+
 [Badge Firmware]: https://img.shields.io/badge/Firmware-Beta-F46D01?style=for-the-badge
 [Badge License]: https://img.shields.io/badge/License-GPL_3-blue.svg?style=for-the-badge
 
-[New Issue]: https://github.com/saybur/scuznet/issues
 
-[License]: LICENSE
+<!--------------------------------{ Buttons }---------------------------------->
+
+[Button Tools]: https://img.shields.io/badge/Tools-EF4678?style=for-the-badge&logoColor=white&logo=AzureArtifacts
+[Button Software]: https://img.shields.io/badge/Software-1997B5?style=for-the-badge&logoColor=white&logo=CodeFactor
+[Button Hardware]: https://img.shields.io/badge/Hardware-535D6C?style=for-the-badge&logoColor=white&logo=CloudFoundry
