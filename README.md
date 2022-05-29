@@ -1,10 +1,12 @@
-scuznet
-=======
 
-Open source hardware emulating SCSI hard drives and an Ethernet adapter, for
-use with vintage Macintosh computers.
+# Scuznet
 
-# Status
+***SCSI Hard Drive*** *and* ***Ethernet Adapter*** <br>
+*emulator for use with vintage **Macintosh**.*
+
+<br>
+
+## Status
 
 The firmware is at a beta stage. There are things that are known to not work
 correctly, and there are likely a large number of other bugs that have yet to
@@ -12,7 +14,7 @@ be identified and/or fixed.
 
 If you encounter problems, please open a new issue.
 
-# Compatibility
+## Compatibility
 
 This implementation has some limitations by design:
 
@@ -24,7 +26,7 @@ This implementation has some limitations by design:
 These should not be a significant problem for the target computer platform,
 which for the most part has similar limitations.
 
-# License
+## License
 
 Except where otherwise noted, all files in this repository are available under
 the terms of the GNU General Public License, version 3, available in the
