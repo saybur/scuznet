@@ -1,5 +1,5 @@
 
-# Scuznet    ![Badge Firmware]
+# Scuznet    [![Badge License]][License]   ![Badge Firmware]
 
 ***SCSI Hard Drive*** *and* ***Ethernet Adapter*** <br>
 *emulator for use with vintage **Macintosh**.*
@@ -31,14 +31,10 @@ which for the most part has similar limitations.
 
 <br>
 
-## License
-
-Except where otherwise noted, all files in this repository are available under
-the terms of the GNU General Public License, version 3, available in the
-LICENSE document. There is NO WARRANTY, not even for MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE. For details, refer to the license.
-
 
 <!----------------------------------------------------------------------------->
 
 [Badge Firmware]: https://img.shields.io/badge/Firmware-Beta-F46D01?style=for-the-badge
+[Badge License]: https://img.shields.io/badge/License-GPL_3-blue.svg?style=for-the-badge
+
+[License]: LICENSE
