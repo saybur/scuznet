@@ -1,6 +1,11 @@
 scuznet
 =======
 
+This is a modified version of the Scuznet board designed to fit in a
+PowerBook. Also included is a small PCB for a PowerBook 100's modem 
+bay. Otherwise this is fully compatible with a Scuznet V2.
+
+
 Open source hardware emulating SCSI hard drives and an Ethernet adapter, for
 use with vintage Macintosh computers.
 
