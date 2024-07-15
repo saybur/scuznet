@@ -39,25 +39,12 @@ static const __flash uint8_t inquiry_data[] = {
 	'0', '.', '1', 'a'
 };
 
-// READ CAPACITY information
-static uint8_t capacity_data[8] = {
-	0x00, 0x00, 0x00, 0x00, // size in blocks, inits to 0
-	0x00, 0x00, 0x02, 0x00  // 512 byte blocks
-};
-
 // track global state of the whole subsystem
 static HDDSTATE state = HDD_NOINIT;
 
-// the volume ID of the current operation
-static uint8_t id = 0;
-// the command buffer for the current operation
-static uint8_t cmd[10];
-
 // generic buffer for READ/WRITE BUFFER commands
+#define MEMORY_BUFFER_OFFSET 600 // from front of global buffer
 #define MEMORY_BUFFER_LENGTH 68
-static uint8_t mem_buffer[MEMORY_BUFFER_LENGTH] = {
-	0x00, 0x00, 0x00, 0x40
-};
 
 /*
  * ============================================================================
@@ -66,9 +53,10 @@ static uint8_t mem_buffer[MEMORY_BUFFER_LENGTH] = {
  */
 
 /*
- * Sets the size of the capacity data array to match the current volume.
+ * Given a pointer to a four byte array of capacity information, this sets the
+ * values to match the current volume.
  */
-static void hdd_update_capacity()
+static void hdd_update_capacity(uint8_t id, uint8_t* arr)
 {
 	/*
 	 * We strip off the low 12 bits to conform with the sizing reported by the
@@ -76,10 +64,10 @@ static void hdd_update_capacity()
 	 * readable block for the command.
 	 */
 	uint32_t last = (config_hdd[id].size & 0xFFFFF000) - 1;
-	capacity_data[0] = (uint8_t) (last >> 24);
-	capacity_data[1] = (uint8_t) (last >> 16);
-	capacity_data[2] = (uint8_t) (last >> 8);
-	capacity_data[3] = (uint8_t) last;
+	arr[0] = (uint8_t) (last >> 24);
+	arr[1] = (uint8_t) (last >> 16);
+	arr[2] = (uint8_t) (last >> 8);
+	arr[3] = (uint8_t) last;
 }
 
 /*
@@ -88,15 +76,14 @@ static void hdd_update_capacity()
  * 
  * Returns true on success and false on failure.
  */
-static uint8_t hdd_seek(uint32_t lba)
+static uint8_t hdd_seek(uint8_t id, uint32_t lba)
 {
 	FRESULT res = f_lseek(&(config_hdd[id].fp), lba * 512);
 	if (res)
 	{
 		debug_dual(DEBUG_HDD_MEM_SEEK_ERROR, res);
 		state = HDD_ERROR;
-		logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-				SENSE_DATA_NO_INFORMATION);
+		logic_set_sense(SENSE_MEDIUM_ERROR, 0);
 		logic_status(LOGIC_STATUS_CHECK_CONDITION);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return 0;
@@ -115,29 +102,25 @@ static uint8_t hdd_seek(uint32_t lba)
  * 
  * Returns true on success or false on failure.
  */
-static uint8_t hdd_parse_op(uint8_t use_length)
+static uint8_t hdd_parse_op(uint8_t id, uint8_t* cmd,
+		LogicDataOp* op, uint8_t use_length)
 {
-	logic_parse_data_op(cmd);
-	LogicDataOp op = logic_data;
-	if (op.invalid)
+	if (! logic_parse_data_op(cmd, op))
 	{
 		debug(DEBUG_HDD_INVALID_OPERATION);
-		logic_cmd_illegal_arg(op.invalid - 1);
+		logic_status(LOGIC_STATUS_CHECK_CONDITION);
+		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		return 0;
 	}
 
 	if (use_length)
 	{
-		if (op.lba + op.length >= config_hdd[id].size)
+		if (op->lba + op->length >= config_hdd[id].size)
 		{
 			debug(DEBUG_HDD_SIZE_EXCEEDED);
-			/*
-			 * TODO: this should be ILLEGAL ARGUMENT with LBA in information. I
-			 * should redo the entire REQUEST SENSE handling system in the
-			 * logic subsystem, it does not adhere to the way things are
-			 * supposed to be done.
-			 */
-			logic_cmd_illegal_arg(op.invalid - 1);
+			logic_set_sense(SENSE_ILLEGAL_LBA, config_hdd[id].size);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 0;
 		}
 		else
@@ -147,11 +130,12 @@ static uint8_t hdd_parse_op(uint8_t use_length)
 	}
 	else
 	{
-		if (op.lba >= config_hdd[id].size)
+		if (op->lba >= config_hdd[id].size)
 		{
 			debug(DEBUG_HDD_SIZE_EXCEEDED);
-			// TODO: per above comment
-			logic_cmd_illegal_arg(op.invalid - 1);
+			logic_set_sense(SENSE_ILLEGAL_LBA, config_hdd[id].size);
+			logic_status(LOGIC_STATUS_CHECK_CONDITION);
+			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 0;
 		}
 		else
@@ -177,8 +161,10 @@ static void hdd_cmd_test_unit_ready()
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_inquiry()
+static void hdd_cmd_inquiry(uint8_t id, uint8_t* cmd)
 {
+	(void) id; // silence compiler warning
+
 	// limit size to the requested inquiry length
 	uint8_t alloc = cmd[4];
 	if (alloc > HDD_INQUIRY_LENGTH)
@@ -189,8 +175,10 @@ static void hdd_cmd_inquiry()
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_read_capacity()
+static void hdd_cmd_read_capacity(uint8_t id, uint8_t* cmd)
 {
+	uint8_t resp[8];
+
 	if (cmd[1] & 1)
 	{
 		// RelAdr set, we're not playing that game
@@ -198,8 +186,15 @@ static void hdd_cmd_read_capacity()
 	}
 	else
 	{
-		hdd_update_capacity();
-		logic_data_in(capacity_data, 8);
+		// set number of sectors
+		hdd_update_capacity(id, resp);
+		// sectors fixed at 512 bytes
+		resp[4] = 0x00;
+		resp[5] = 0x00;
+		resp[6] = 0x02;
+		resp[7] = 0x00;
+
+		logic_data_in(resp, 8);
 		logic_status(LOGIC_STATUS_GOOD);
 		logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 	}
@@ -212,8 +207,10 @@ static void hdd_cmd_read_capacity()
  * The flash card handles all this internally so this is likely useless to
  * support anyway.
  */
-static void hdd_cmd_format()
+static void hdd_cmd_format(uint8_t id, uint8_t* cmd)
 {
+	(void) id; // silence compiler warning
+
 	uint8_t fmt = cmd[1];
 	if (fmt == 0x00)
 	{
@@ -242,9 +239,7 @@ static void hdd_cmd_format()
 		}
 		else
 		{
-			logic_set_sense_pointer(SENSE_KEY_ILLEGAL_REQUEST,
-					SENSE_DATA_INVALID_CDB_PARAM,
-					0xC0, 0x02);
+			logic_set_sense(SENSE_INVALID_PARAMETER, 2);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 		}
@@ -255,10 +250,10 @@ static void hdd_cmd_format()
 	}
 }
 
-static void hdd_cmd_read()
+static void hdd_cmd_read(uint8_t id, uint8_t* cmd)
 {
-	if (! hdd_parse_op(1)) return;
-	LogicDataOp op = logic_data;
+	LogicDataOp op;
+	if (! hdd_parse_op(id, cmd, &op, 1)) return;
 
 	if (op.length > 0)
 	{
@@ -291,7 +286,7 @@ static void hdd_cmd_read()
 		else // access via FAT
 		{
 			// move to correct sector
-			if (! hdd_seek(op.lba)) return;
+			if (! hdd_seek(id, op.lba)) return;
 
 			// read from card
 			res = f_mread(&(config_hdd[id].fp), phy_data_offer_block,
@@ -312,8 +307,7 @@ static void hdd_cmd_read()
 				}
 			}
 			state = HDD_ERROR;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
+			logic_set_sense(SENSE_MEDIUM_ERROR, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return;
@@ -325,10 +319,10 @@ static void hdd_cmd_read()
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_write()
+static void hdd_cmd_write(uint8_t id, uint8_t* cmd)
 {
-	if (! hdd_parse_op(1)) return;
-	LogicDataOp op = logic_data;
+	LogicDataOp op;
+	if (! hdd_parse_op(id, cmd, &op, 1)) return;
 
 	if (op.length > 0)
 	{
@@ -361,7 +355,7 @@ static void hdd_cmd_write()
 		else // access via FAT
 		{
 			// move to correct sector
-			if (! hdd_seek(op.lba)) return;
+			if (! hdd_seek(id, op.lba)) return;
 
 			// write to card
 			res = f_mwrite(&(config_hdd[id].fp), phy_data_ask_block,
@@ -382,8 +376,7 @@ static void hdd_cmd_write()
 				}
 			}
 			state = HDD_ERROR;
-			logic_set_sense(SENSE_KEY_MEDIUM_ERROR,
-					SENSE_DATA_NO_INFORMATION);
+			logic_set_sense(SENSE_MEDIUM_ERROR, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return;
@@ -395,7 +388,7 @@ static void hdd_cmd_write()
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_mode_sense()
+static void hdd_cmd_mode_sense(uint8_t id, uint8_t* cmd)
 {
 	debug(DEBUG_HDD_MODE_SENSE);
 
@@ -405,7 +398,7 @@ static void hdd_cmd_mode_sense()
 	uint8_t cmd_page = cmd[2] & 0x3F;
 
 	// reset result length values
-	uint8_t buffer[128];
+	uint8_t* buffer = global_buffer;
 	buffer[0] = 0;
 	buffer[1] = 0;
 
@@ -577,6 +570,7 @@ static void hdd_cmd_mode_sense()
 	}
 
 	// rigid disk geometry page
+	uint8_t cap[4];
 	uint8_t cyl[3];
 	if (cmd_page == 0x04 || cmd_page == 0x3F)
 	{
@@ -588,10 +582,10 @@ static void hdd_cmd_mode_sense()
 		 * volume capacity. With a fixed 512 byte sector size, this allows
 		 * incrementing in 4096 block steps, or 2MB each.
 		 */
-		hdd_update_capacity();
-		cyl[0] = capacity_data[0] >> 4;
-		cyl[1] = (capacity_data[0] << 4) | (capacity_data[1] >> 4);
-		cyl[2] = (capacity_data[1] << 4) | (capacity_data[2] >> 4);
+		hdd_update_capacity(id, cap);
+		cyl[0] = cap[0] >> 4;
+		cyl[1] = (cap[0] << 4) | (cap[1] >> 4);
+		cyl[2] = (cap[1] << 4) | (cap[2] >> 4);
 
 		buffer[mode_pos++] = 0x04;
 		buffer[mode_pos++] = 0x16;
@@ -719,8 +713,9 @@ static void hdd_cmd_mode_sense()
 	}
 }
 
-static void hdd_cmd_verify()
+static void hdd_cmd_verify(uint8_t id, uint8_t* cmd)
 {
+	(void) id; // silence compiler warning
 	debug(DEBUG_HDD_VERIFY);
 
 	if (cmd[1] & 1)
@@ -753,8 +748,10 @@ static void hdd_cmd_verify()
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_read_buffer()
+static void hdd_cmd_read_buffer(uint8_t id, uint8_t* cmd)
 {
+	(void) id; // silence compiler warning
+
 	debug(DEBUG_HDD_READ_BUFFER);
 	uint8_t cmd_mode = cmd[1] & 0x7;
 	// we only support mode 0
@@ -779,14 +776,22 @@ static void hdd_cmd_read_buffer()
 		length = MEMORY_BUFFER_LENGTH;
 	}
 
+	// rewrite the header
+	global_buffer[MEMORY_BUFFER_OFFSET] = 0x00;
+	global_buffer[MEMORY_BUFFER_OFFSET + 1] = 0x00;
+	global_buffer[MEMORY_BUFFER_OFFSET + 2] = 0x00;
+	global_buffer[MEMORY_BUFFER_OFFSET + 3] = 0x40;
+
 	// send the data
-	logic_data_in(mem_buffer, length);
+	logic_data_in(global_buffer + MEMORY_BUFFER_OFFSET, length);
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_write_buffer()
+static void hdd_cmd_write_buffer(uint8_t id, uint8_t* cmd)
 {
+	(void) id; // silence compiler warning
+
 	debug(DEBUG_HDD_WRITE_BUFFER);
 	uint8_t cmd_mode = cmd[1] & 0x7;
 	// we only support mode 0
@@ -818,14 +823,16 @@ static void hdd_cmd_write_buffer()
 	{
 		phy_data_ask();
 	}
-	logic_data_out(mem_buffer + 4, length);
+	logic_data_out(global_buffer + MEMORY_BUFFER_OFFSET + 4, length);
 	logic_status(LOGIC_STATUS_GOOD);
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
 // hacky version that just accepts without complaint anything
-static void hdd_cmd_mode_select()
+static void hdd_cmd_mode_select(uint8_t id, uint8_t* cmd)
 {
+	(void) id; // silence compiler warning
+
 	debug(DEBUG_HDD_MODE_SELECT);
 	uint8_t length = cmd[4];
 	if (length > 0)
@@ -836,10 +843,10 @@ static void hdd_cmd_mode_select()
 	logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 }
 
-static void hdd_cmd_seek()
+static void hdd_cmd_seek(uint8_t id, uint8_t* cmd)
 {
-	if (! hdd_parse_op(0)) return;
-	LogicDataOp op = logic_data;
+	LogicDataOp op;
+	if (! hdd_parse_op(id, cmd, &op, 0)) return;
 
 	if (debug_enabled())
 	{
@@ -866,7 +873,7 @@ static void hdd_cmd_seek()
 	else // access via FAT
 	{
 		// move to correct sector
-		if (! hdd_seek(op.lba)) return;
+		if (! hdd_seek(id, op.lba)) return;
 	}
 
 	logic_status(LOGIC_STATUS_GOOD);
@@ -1118,13 +1125,13 @@ HDDSTATE hdd_state(void)
 	return state;
 }
 
-uint8_t hdd_main(uint8_t hdd_id)
+uint8_t hdd_main(uint8_t id)
 {
 	if (! logic_ready()) return 0;
-	if (hdd_id >= HARD_DRIVE_COUNT) return 0;
-	if (config_hdd[hdd_id].id == 255) return 0;
+	if (id >= HARD_DRIVE_COUNT) return 0;
+	if (config_hdd[id].id == 255) return 0;
 
-	id = hdd_id;
+	uint8_t cmd[10];
 	logic_start(id + 1, 1); // logic ID 0 for the link device, hence +1
 	if (! logic_command(cmd)) return 1; // takes care of disconnection on fail
 
@@ -1143,7 +1150,7 @@ uint8_t hdd_main(uint8_t hdd_id)
 		{
 			// system is still becoming ready
 			debug(DEBUG_HDD_NOT_READY);
-			logic_set_sense(SENSE_KEY_NOT_READY, SENSE_DATA_LUN_BECOMING_RDY);
+			logic_set_sense(SENSE_BECOMING_READY, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 1;
@@ -1151,7 +1158,7 @@ uint8_t hdd_main(uint8_t hdd_id)
 		else
 		{
 			// general error
-			logic_set_sense(SENSE_KEY_HARDWARE_ERROR, SENSE_DATA_NO_INFORMATION);
+			logic_set_sense(SENSE_HARDWARE_ERROR, 0);
 			logic_status(LOGIC_STATUS_CHECK_CONDITION);
 			logic_message_in(LOGIC_MSG_COMMAND_COMPLETE);
 			return 1;
@@ -1161,17 +1168,17 @@ uint8_t hdd_main(uint8_t hdd_id)
 	switch (cmd[0])
 	{
 		case 0x04: // FORMAT UNIT
-			hdd_cmd_format();
+			hdd_cmd_format(id, cmd);
 			break;
 		case 0x12: // INQUIRY
-			hdd_cmd_inquiry();
+			hdd_cmd_inquiry(id, cmd);
 			break;
 		case 0x08: // READ(6)
 		case 0x28: // READ(10)
-			hdd_cmd_read();
+			hdd_cmd_read(id, cmd);
 			break;
 		case 0x25: // READ CAPACITY
-			hdd_cmd_read_capacity();
+			hdd_cmd_read_capacity(id, cmd);
 			break;
 		case 0x17: // RELEASE
 			logic_status(LOGIC_STATUS_GOOD);
@@ -1189,30 +1196,30 @@ uint8_t hdd_main(uint8_t hdd_id)
 			break;
 		case 0x0B: // SEEK(6)
 		case 0x2B: // SEEK(10)
-			hdd_cmd_seek();
+			hdd_cmd_seek(id, cmd);
 			break;
 		case 0x00: // TEST UNIT READY
-			hdd_cmd_test_unit_ready();
+			hdd_cmd_test_unit_ready(id, cmd);
 			break;
 		case 0x0A: // WRITE(6)
 		case 0x2A: // WRITE(10)
-			hdd_cmd_write();
+			hdd_cmd_write(id, cmd);
 			break;
 		case 0x1A: // MODE SENSE(6)
 		case 0x5A: // MODE SENSE(10)
-			hdd_cmd_mode_sense();
+			hdd_cmd_mode_sense(id, cmd);
 			break;
 		case 0x15: // MODE SELECT(6)
-			hdd_cmd_mode_select();
+			hdd_cmd_mode_select(id, cmd);
 			break;
 		case 0x2F: // VERIFY
-			hdd_cmd_verify();
+			hdd_cmd_verify(id, cmd);
 			break;
 		case 0x3C: // READ BUFFER
-			hdd_cmd_read_buffer();
+			hdd_cmd_read_buffer(id, cmd);
 			break;
 		case 0x3B: // WRITE BUFFER
-			hdd_cmd_write_buffer();
+			hdd_cmd_write_buffer(id, cmd);
 			break;
 		default:
 			logic_cmd_illegal_op(cmd[0]);

@@ -91,9 +91,8 @@
 static volatile uint8_t card_status = STA_NOINIT;
 static uint8_t card_type;
 
-#define DISK_BUFFER_SIZE 516
-static uint8_t buff_a[DISK_BUFFER_SIZE];
-static uint8_t buff_b[DISK_BUFFER_SIZE];
+// we treat the global buffer as two chunks of this size
+#define BUFFER_CHUNK        516
 
 // for all DMA channels, writing this to CTRLA starts them in the correct mode
 // and avoids the extra cycles of a read-modify-write in an atomic block
@@ -498,8 +497,8 @@ static uint8_t disk_read_blocks (
 	{
 		// we treat single-sector reads like a normal FIFO call
 		if (mem_cmd(CMD17, sector) == 0
-				&& mem_bulk_read(buff_a, 512)
-				&& func(buff_a))
+				&& mem_bulk_read(global_buffer, 512)
+				&& func(global_buffer))
 		{
 			(*act_count)++;
 			err = 0;
@@ -512,6 +511,9 @@ static uint8_t disk_read_blocks (
 	}
 	else
 	{
+		uint8_t* buff_a = global_buffer;
+		uint8_t* buff_b = global_buffer + BUFFER_CHUNK;
+
 		uint8_t cmdres = mem_cmd(CMD18, sector);
 		if (cmdres == 0)
 		{
@@ -737,9 +739,10 @@ DRESULT disk_write_multi (
 	if (count == 1)
 	{
 		// we treat single-sector writes like a normal FIFO call
-		if (func(buff_a))
+		if (func(global_buffer))
 		{
-			if ((mem_cmd(CMD24, sector) == 0) && mem_bulk_write(buff_a, 0xFE, 512))
+			if ((mem_cmd(CMD24, sector) == 0)
+					&& mem_bulk_write(global_buffer, 0xFE, 512))
 			{
 				count = 0;
 			}
@@ -751,6 +754,9 @@ DRESULT disk_write_multi (
 	}
 	else
 	{
+		uint8_t* buff_a = global_buffer;
+		uint8_t* buff_b = global_buffer + BUFFER_CHUNK;
+
 		// multiple sector writes use DMA
 		if (card_type & CT_SDC) mem_cmd(ACMD23, count);
 		if (mem_cmd(CMD25, sector) == 0)

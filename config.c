@@ -50,6 +50,7 @@ static const __flash char str_yes[] =       "yes";
 
 ENETConfig config_enet = { 255, 0, LINK_NONE, { 0x02, 0x00, 0x00, 0x00, 0x00, 0x00} };
 HDDConfig config_hdd[HARD_DRIVE_COUNT];
+uint8_t global_buffer[GLOBAL_BUFFER_SIZE];
 
 /*
  * String equality checks where one string is in SRAM and the other is in
@@ -208,8 +209,16 @@ static int config_handler(
 		}
 		else if (strequ(name, str_file))
 		{
-			config_hdd[hddsel].filename = strdup(value);
-			return 1;
+			if (strlen(value) < HDD_FILENAME_SIZE)
+			{
+				strncpy(config_hdd[hddsel].filename, value,
+					sizeof(config_hdd[hddsel].filename));
+				return 1;
+			}
+			else
+			{
+				return 0;
+			}
 		}
 		else if (strequ(name, str_size))
 		{
@@ -259,18 +268,18 @@ static int config_handler(
 
 void config_read(uint8_t* target_masks)
 {
+	*target_masks = 0;
+
 	// initialize GPIO and hard drive structs
 	GLOBAL_CONFIG_REGISTER = 0x00;
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
 		config_hdd[i].id = 255;
-		config_hdd[i].filename = NULL;
 		config_hdd[i].lba = 0;
+		config_hdd[i].filename[0] = '\0';
 		config_hdd[i].size = 0;
 		config_hdd[i].mode = HDD_MODE_NORMAL;
 	}
-	
-	*target_masks = 0;
 
 	// open the file off the memory card
 	FIL fil;
@@ -297,6 +306,14 @@ void config_read(uint8_t* target_masks)
 	}
 	f_close(&fil);
 
+	// override configuration file if asked
+#ifdef FORCE_NUVO
+	config_enet.type = LINK_NUVO;
+#endif
+#ifdef FORCE_DAYNA
+	config_enet.type = LINK_DAYNA;
+#endif
+
 	/*
 	 * Calculate the PHY masks requested from the configuration file, and
 	 * disable hard drives with invalid values.
@@ -314,7 +331,7 @@ void config_read(uint8_t* target_masks)
 	}
 	for (uint8_t i = 0; i < HARD_DRIVE_COUNT; i++)
 	{
-		if (config_hdd[i].id < 7 && config_hdd[i].filename != NULL)
+		if (config_hdd[i].id < 7)
 		{
 			config_hdd[i].mask = 1 << config_hdd[i].id;
 			if (! (config_hdd[i].mask & used_masks))

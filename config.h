@@ -92,16 +92,29 @@ typedef enum {
 /*
  * The virtual hard drive configuration information.
  */
+#define HDD_FILENAME_SIZE 13 // 8.3+'\0'
 typedef struct HDDConfig_t {
 	uint8_t id;                 // disabled when set to 255
 	uint8_t mask;               // the bitmask for the above ID
-	char* filename;             // filename for volume image
+	char filename[HDD_FILENAME_SIZE];
 	uint32_t lba;	            // if !=0, start LBA for direct volumes
 	uint32_t size;              // size of HDD in sectors
 	FIL fp;
 	HDDMODE mode;
 } HDDConfig;
 extern HDDConfig config_hdd[HARD_DRIVE_COUNT];
+
+/*
+ * ============================================================================
+ *   GLOBAL BUFFER
+ * ============================================================================
+ * 
+ * This is a slice of memory available for the memory card access code, or
+ * another part of the program executing when access to the memory card is not
+ * being performed.
+ */
+#define GLOBAL_BUFFER_SIZE      1032 // must be at least 516 * 2
+extern uint8_t global_buffer[GLOBAL_BUFFER_SIZE];
 
 /*
  * ============================================================================

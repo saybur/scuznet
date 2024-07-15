@@ -37,6 +37,7 @@
 #define DEBUG_LOGIC_BAD_LUN                       0x50 // 0
 #define DEBUG_LOGIC_BAD_CMD                       0x52 // 1
 #define DEBUG_LOGIC_BAD_CMD_ARGS                  0x53 // 0
+#define DEBUG_LOGIC_SET_SENSE                     0x54 // 1
 #define DEBUG_LOGIC_UNKNOWN_MESSAGE               0x5E // 1
 #define DEBUG_LOGIC_MESSAGE                       0x5F // 1
 #define DEBUG_HDD_MODE_SENSE                      0x7B // 0
@@ -98,12 +99,16 @@
 #define DEBUG_FATAL                               0xEF // 2
 
 /*
- * Fatal error codes. Codes 1-4 are reserved for the hard drive devices.
+ * Fatal error codes. Codes 1-4 are reserved for the hard drive devices. This
+ * first batch are the long flash codes.
  */
 #define FATAL_CONFIG_FILE                         5
 #define FATAL_CONFIG_LINE_READ                    6
-#define FATAL_BROWNOUT                            7
+#define FATAL_GENERAL                             7
 #define FATAL_MEM_MOUNT_FAILED                    8
+// short codes
+#define FATAL_BROWNOUT                            2
+#define FATAL_STACK_CORRUPTED                     3
 
 // the LED on and off time for each flash, in milliseconds
 #define LED_LONG_FLASH                            500

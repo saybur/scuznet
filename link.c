@@ -103,9 +103,6 @@ static const __flash uint8_t inquiry_data_d[255] = {
 // the last-seen identify value
 static uint8_t last_identify;
 
-// buffers and headers used during the reading operation
-static uint8_t read_buffer[6];
-
 // the incremental packet counter used during packet read operations by
 // the Nuvo protocol
 static uint8_t rx_packet_id = 0;
@@ -113,8 +110,7 @@ static uint8_t rx_packet_id = 0;
 // the value we use as a flag to see if we need to ask for a reselection
 static uint8_t asked_for_reselection = 0;
 
-// the "ROM" (configuration file) and dynamically configured MAC addresses
-static uint8_t mac_rom[6];
+// the dynamically configured MAC address
 static uint8_t mac_dyn[6];
 
 /*
@@ -178,10 +174,6 @@ static void link_cmd_inquiry(uint8_t* cmd)
 	if (debug_enabled())
 	{
 		debug(DEBUG_LINK_INQUIRY);
-		if (debug_verbose())
-		{
-			debug_dual(alloc >> 8, alloc);
-		}
 	}
 
 	// protect against 0-length allocation
@@ -208,7 +200,7 @@ static void link_cmd_inquiry(uint8_t* cmd)
 			// 6 bytes of ROM MAC
 			for (uint8_t i = 0; i < 6; i++)
 			{
-				phy_data_offer(mac_rom[i]);
+				phy_data_offer(config_enet.mac[i]);
 			}
 			// 14 bytes of 0x00
 			for (uint8_t i = 0; i < 14; i++)
@@ -476,6 +468,8 @@ static void link_cmd_dayna_send(uint8_t* cmd)
 
 static void link_nuvo_read_packet(void)
 {
+	uint8_t read_buffer[4];
+
 	if ((net_header.stath) & 3)
 	{
 		// broadcast/multicast set
@@ -600,6 +594,7 @@ static void link_cmd_dayna_read(uint8_t* cmd)
 	}
 	else
 	{
+		uint8_t read_buffer[6];
 		debug(DEBUG_LINK_RX_STARTING);
 
 		/*
@@ -688,7 +683,6 @@ void link_init()
 	{
 		for (uint8_t i = 0; i < 6; i++)
 		{
-			mac_rom[i] = config_enet.mac[i];
 			mac_dyn[i] = config_enet.mac[i];
 		}
 		net_set_filter(NET_FILTER_UNICAST | NET_FILTER_BROADCAST);

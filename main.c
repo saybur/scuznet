@@ -33,6 +33,7 @@
 #include "test.h"
 
 static FATFS fs;
+static uint8_t exec_count = 0;
 static uint16_t stack_unused = 0xFFFF;
 
 static void main_handle(void)
@@ -71,20 +72,28 @@ static void main_handle(void)
 
 		led_off();
 	}
-	else if (debug_verbose())
+	else if (exec_count == 0)
 	{
 		uint16_t stackp = debug_stack_unused();
-		if (stackp < stack_unused)
+		if (stackp < 4)
+		{
+			fatal(FATAL_GENERAL, FATAL_STACK_CORRUPTED);
+		}
+		else if (stackp < stack_unused)
 		{
 			stack_unused = stackp;
-			debug(DEBUG_MAIN_STACK_UNUSED);
-			debug_dual(stackp >> 8, stackp);
+			if (debug_verbose())
+			{
+				debug(DEBUG_MAIN_STACK_UNUSED);
+				debug_dual(stackp >> 8, stackp);
+			}
 		}
 	}
 
 	link_check_rx();
 	net_transmit_check();
 	hdd_contiguous_check();
+	exec_count++;
 }
 
 int main(void)
@@ -106,7 +115,7 @@ int main(void)
 	RST.STATUS = 0xFF; // clear all flags for next reboot (?)
 	if (rst_stat & RST_BORF_bm)
 	{
-		fatal(FATAL_BROWNOUT, 0);
+		fatal(FATAL_GENERAL, FATAL_BROWNOUT);
 	}
 
 	// mount the memory card
