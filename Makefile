@@ -3,9 +3,9 @@
 #  the programmer being used.
 # ============================================================================
 
-OPTIONS := -DHW_VXXX -DDEBUGGING
+OPTIONS := -DHW_VXXX -DDEBUGGING -DUSE_TOOLBOX
 PROGRAMMER := avrispv2
-MCU := atxmega192a3u
+MCU := atxmega64a3u
 
 # ============================================================================
 #  Use caution editing the following values.
@@ -20,7 +20,8 @@ AVRDUDE_FLAGS := -p $(MCU) -c $(PROGRAMMER) -P usb
 
 MAIN = scuznet
 SRCS = config.c debug.c disk.c enc.c net.c init.c phy.c logic.c hdd.c link.c \
-		test.c lib/ff/ff.c lib/ff/ffunicode.c lib/inih/ini.c main.c
+		test.c toolbox.c lib/ff/ff.c lib/ff/ffunicode.c lib/inih/ini.c \
+		main.c
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all

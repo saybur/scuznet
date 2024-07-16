@@ -25,6 +25,7 @@
 #include "debug.h"
 #include "logic.h"
 #include "hdd.h"
+#include "toolbox.h"
 
 /*
  * Defines the standard response we provide when asked to give INQUIRY data.
@@ -290,7 +291,7 @@ static void hdd_cmd_read(uint8_t id, uint8_t* cmd)
 
 			// read from card
 			res = f_mread(&(config_hdd[id].fp), phy_data_offer_block,
-					op.length, &act_len);
+					op.length, &act_len, 0);
 		}
 
 		if (res || act_len != op.length)
@@ -689,11 +690,24 @@ static void hdd_cmd_mode_sense(uint8_t id, uint8_t* cmd)
 		}
 	}
 
+#ifdef USE_TOOLBOX
+	if (cmd_page == 0x31 || cmd_page == 0x3F)
+	{
+		page_found = 1;
+
+		buffer[mode_pos++] = 0x31;
+		buffer[mode_pos++] = 42;
+
+		for (uint8_t i = 0; i < 42; i++)
+		{
+			buffer[mode_pos++] = 0x00;
+		}
+	}
+#endif
+
 	// finally, either send or error out, depending on if any page matched.
 	if (page_found)
 	{
-		if (mode_pos > cmd_alloc)
-			mode_pos = cmd_alloc;
 		if (cmd[0] == 0x5A)
 		{
 			buffer[1] = mode_pos - 2;
@@ -702,6 +716,10 @@ static void hdd_cmd_mode_sense(uint8_t id, uint8_t* cmd)
 		{
 			buffer[0] = mode_pos - 1;
 		}
+		// per spec, do not modify data count based on allocation,
+		// just truncate the return
+		if (mode_pos > cmd_alloc)
+			mode_pos = cmd_alloc;
 
 		logic_data_in(buffer, mode_pos);
 		logic_status(LOGIC_STATUS_GOOD);
@@ -1164,6 +1182,14 @@ uint8_t hdd_main(uint8_t id)
 			return 1;
 		}
 	}
+
+#ifdef USE_TOOLBOX
+	if (toolbox_main(cmd))
+	{
+		logic_done();
+		return 1;
+	}
+#endif
 
 	switch (cmd[0])
 	{

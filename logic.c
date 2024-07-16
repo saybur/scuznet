@@ -323,6 +323,12 @@ uint8_t logic_command(uint8_t* command)
 	{
 		cmd_count = 10;
 	}
+#ifdef USE_TOOLBOX
+	else if (command[0] >= 0xD0 && command[0] <= 0xD2) // toolbox
+	{
+		cmd_count = 10;
+	}
+#endif
 	else // not supported
 	{
 		cmd_count = 1;
@@ -346,6 +352,12 @@ uint8_t logic_command(uint8_t* command)
 		// otherwise we pull from CDB
 		lun = command[1] >> 5;
 	}
+#ifdef USE_TOOLBOX
+	else if (command[0] >= 0xD0 && command[0] <= 0xD2)
+	{
+		lun = 0;
+	}
+#endif
 	if (lun)
 	{
 		if (command[0] == 0x12) // INQUIRY
@@ -375,7 +387,11 @@ uint8_t logic_command(uint8_t* command)
 	}
 
 	// command op out of range handler
-	if (command[0] >= 0x60)
+#ifdef USE_TOOLBOX
+	if (! (command[0] < 0x60 || (command[0] >= 0xD0 && command[0] <= 0xD2)))
+#else
+	if (! (command[0] < 0x60))
+#endif
 	{
 		logic_cmd_illegal_op(command[0]);
 		logic_done();
