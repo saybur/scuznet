@@ -317,7 +317,7 @@ typedef struct {
 FRESULT f_open (FIL* fp, const TCHAR* path, BYTE mode);				/* Open or create a file */
 FRESULT f_close (FIL* fp);											/* Close an open file object */
 FRESULT f_read (FIL* fp, void* buff, UINT btr, UINT* br);			/* Read data from the file */
-FRESULT f_mread (FIL* fp, BYTE (*func)(BYTE*), UINT str, UINT* sr);
+FRESULT f_mread (FIL* fp, BYTE (*func)(BYTE*), UINT str, UINT* sr, BYTE extra);
 FRESULT f_write (FIL* fp, const void* buff, UINT btw, UINT* bw);	/* Write data to the file */
 FRESULT f_mwrite (FIL* fp, BYTE (*func)(BYTE*), UINT stw, UINT* sw);
 FRESULT f_lseek (FIL* fp, FSIZE_t ofs);								/* Move file pointer of the file object */

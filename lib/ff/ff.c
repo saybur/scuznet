@@ -3943,7 +3943,8 @@ FRESULT f_mread (
 	FIL* fp, 				/* Open file to be read */
 	BYTE (*func)(BYTE*),	/* Function to supply sectors to when read */
 	UINT str,				/* Number of sectors to read */
-	UINT* sr				/* Number of sectors to read */
+	UINT* sr,				/* Number of sectors to read */
+	BYTE extra				/* Send +1 if end not on sector boundary */
 )
 {
 	FRESULT res;
@@ -3957,7 +3958,12 @@ FRESULT f_mread (
 	res = validate(&fp->obj, &fs);				/* Check validity of the file object */
 	if (res != FR_OK || (res = (FRESULT)fp->err) != FR_OK) LEAVE_FF(fs, res);	/* Check validity */
 	if (!(fp->flag & FA_READ)) LEAVE_FF(fs, FR_DENIED); /* Check access mode */
-	remain = (fp->obj.objsize - fp->fptr) / SS(fs);
+	remain = (fp->obj.objsize - fp->fptr);
+	if (extra && remain % SS(fs)) {
+		remain = remain / SS(fs) + 1;
+	} else {
+		remain = remain / SS(fs);
+	}
 	if (str > remain) str = (UINT)remain;		/* Truncate str by remaining sectors */
 
 	/* refuse to proceed if cache is dirty, or if we are not on a sector boundary */
